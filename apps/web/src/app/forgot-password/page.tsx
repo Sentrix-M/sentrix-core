@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { Field } from "@/components/auth/field";
@@ -28,9 +28,7 @@ export default function ForgotPasswordPage() {
       await authApi.forgotPassword(email.trim());
       setSent(true);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to request a reset link.",
-      );
+      setError(err instanceof Error ? err.message : "Unable to request a reset link.");
     } finally {
       setSubmitting(false);
     }
@@ -53,16 +51,13 @@ export default function ForgotPasswordPage() {
       }
     >
       {sent ? (
-        <div
-          role="status"
-          className="flex flex-col items-center gap-3 py-4 text-center"
-        >
+        <div role="status" className="flex flex-col items-center gap-3 py-4 text-center">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-lg text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             ✓
           </div>
           <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            If an account exists for <strong>{email}</strong>, a password reset
-            link has been sent. Please check your inbox.
+            If an account exists for <strong>{email}</strong>, a password reset link has been sent.
+            Please check your inbox.
           </p>
         </div>
       ) : (
@@ -95,4 +90,3 @@ export default function ForgotPasswordPage() {
     </AuthCard>
   );
 }
-

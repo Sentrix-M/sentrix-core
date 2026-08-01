@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { Field } from "@/components/auth/field";
@@ -137,9 +137,7 @@ export default function RegisterPage() {
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           error={
-            confirmPassword && password !== confirmPassword
-              ? "Passwords do not match."
-              : undefined
+            confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined
           }
         />
 
@@ -168,4 +166,3 @@ export default function RegisterPage() {
     </AuthCard>
   );
 }
-

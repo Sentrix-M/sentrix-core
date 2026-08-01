@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { type InputHTMLAttributes, type ReactNode, useId } from "react";
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
@@ -30,10 +30,7 @@ export function Field({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label
-          htmlFor={fieldId}
-          className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
-        >
+        <label htmlFor={fieldId} className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
           {label}
         </label>
         {rightSlot}
@@ -61,4 +58,3 @@ export function Field({
     </div>
   );
 }
-

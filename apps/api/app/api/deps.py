@@ -24,6 +24,7 @@ from app.repositories.refresh_token_repository import (
 )
 from app.repositories.user_repository import InMemoryUserRepository, UserRepository
 from app.services.auth_service import AuthService
+from app.services.conversation_service import ConversationService
 from app.services.token_service import TokenService
 from app.utils.seed import seed_admin_user
 
@@ -55,6 +56,17 @@ def get_refresh_token_repository(request: Request) -> RefreshTokenRepository:
             detail="Refresh-token repository is not initialized.",
         )
     return repo
+
+
+def get_conversation_service(request: Request) -> ConversationService:
+    """Return the shared conversation service stored on application state."""
+    service = getattr(request.app.state, "conversation_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Conversation service is not initialized.",
+        )
+    return service
 
 
 def get_auth_service(

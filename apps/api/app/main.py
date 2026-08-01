@@ -17,6 +17,7 @@ from app.api.v1 import api_router
 from app.config.settings import get_settings
 from app.repositories.refresh_token_repository import InMemoryRefreshTokenRepository
 from app.repositories.user_repository import InMemoryUserRepository
+from app.services.conversation_service import ConversationService
 from app.utils.seed import seed_admin_user
 
 settings = get_settings()
@@ -32,6 +33,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.user_repository = user_repository
     app.state.refresh_token_repository = refresh_token_repository
+
+    # Conversation engine — stateless and mock-backed for now. The real AI
+    # router/RAG/tool layers can be injected here without touching the routers.
+    app.state.conversation_service = ConversationService()
 
     # Seed the default admin account for local development.
     await seed_admin_user(user_repository, settings)

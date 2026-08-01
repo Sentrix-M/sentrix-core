@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { Field } from "@/components/auth/field";
@@ -102,4 +102,3 @@ export default function LoginPage() {
     </AuthCard>
   );
 }
-
