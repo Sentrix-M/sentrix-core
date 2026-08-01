@@ -21,6 +21,10 @@ from app.kernel.context_builder import (
     ConversationContext,
     InMemoryContextProvider,
 )
+from app.kernel.integration import (
+    build_kernel_pipeline,
+    get_kernel_provider,
+)
 from app.kernel.pipeline import (
     KernelPipeline,
     ProviderClient,
@@ -54,6 +58,8 @@ __all__ = [
     "DefaultProviderRouter",
     "InMemoryContextProvider",
     "KernelError",
+    "build_kernel_pipeline",
+    "get_kernel_provider",
     "KernelPipeline",
     "KernelRequest",
     "KernelResponse",

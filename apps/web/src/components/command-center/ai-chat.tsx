@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   BoltIcon,
@@ -11,15 +11,16 @@ import {
   MicIcon,
   SendIcon,
   SparklesIcon,
+  StopIcon,
 } from "@/components/command-center/icons";
-import { type ConversationMetadata, conversationApi } from "@/lib/api";
+import { conversationApi, type StreamCompletedPayload } from "@/lib/api";
 import { type ChatMessage, chatMessages, suggestedPrompts } from "@/lib/mock-data";
 
-/** Build a display message from a backend conversation response. */
+/** Build a display message from a completed backend conversation response. */
 function toChatMessage(
   conversationId: string,
   response: string,
-  metadata: ConversationMetadata,
+  metadata: StreamCompletedPayload,
   now: Date,
 ): ChatMessage {
   const time = now.toLocaleTimeString([], {
@@ -31,10 +32,6 @@ function toChatMessage(
     role: "assistant",
     content: response,
     time,
-    reasoning: metadata.reasoning?.join("\n") ?? undefined,
-    evidence: metadata.evidence ?? undefined,
-    sources: metadata.sources ?? undefined,
-    toolsUsed: metadata.tools_used ?? undefined,
     executionTime: metadata.execution_time_ms
       ? `${(metadata.execution_time_ms / 1000).toFixed(1)}s`
       : undefined,
@@ -154,7 +151,7 @@ function UserMessage({ message }: { message: ChatMessage }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ label = "Sentrix is reasoning…" }: { label?: string }) {
   return (
     <div className="flex items-center gap-2 text-[11px] text-zinc-500">
       <span className="flex gap-1">
@@ -162,7 +159,7 @@ function TypingIndicator() {
         <span className="typing-dot h-1.5 w-1.5 rounded-full bg-cyan-400 [animation-delay:120ms]" />
         <span className="typing-dot h-1.5 w-1.5 rounded-full bg-cyan-400 [animation-delay:240ms]" />
       </span>
-      Sentrix is reasoning…
+      {label}
     </div>
   );
 }
@@ -170,7 +167,8 @@ function TypingIndicator() {
 export function AiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(chatMessages);
   const [draft, setDraft] = useState("");
-  const [thinking, setThinking] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<"thinking" | "generating" | "idle">("idle");
   const [selectedAgent, setSelectedAgent] = useState("SOC Agent");
   const [conversationId] = useState<string>(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -179,6 +177,7 @@ export function AiChat() {
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<(() => void) | null>(null);
 
   const agents = [
     "SOC Agent",
@@ -190,17 +189,39 @@ export function AiChat() {
   ];
 
   // Auto-scroll to the latest message whenever the thread changes. The effect
-  // intentionally runs on message/thinking changes; scrollRef is a stable ref.
+  // intentionally runs on messages/streaming/phase changes; scrollRef is stable.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages, thinking]);
+  }, [messages, streaming, streamPhase]);
+
+  const appendError = useCallback((message: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `err-${Date.now()}`,
+        role: "assistant",
+        content: `⚠ ${message}`,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+  }, []);
+
+  const stopStream = useCallback(() => {
+    abortRef.current?.();
+    abortRef.current = null;
+    setStreaming(false);
+    setStreamPhase("idle");
+  }, []);
 
   async function submitPrompt(e: FormEvent) {
     e.preventDefault();
     const content = draft.trim();
-    if (!content || thinking) return;
+    if (!content || streaming) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -213,35 +234,77 @@ export function AiChat() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setDraft("");
-    setThinking(true);
+    setStreaming(true);
+    setStreamPhase("thinking");
 
-    try {
-      const reply = await conversationApi.sendMessage({
-        conversation_id: conversationId,
-        message: content,
-      });
-      setMessages((prev) => [
-        ...prev,
-        toChatMessage(conversationId, reply.response, reply.metadata, new Date()),
-      ]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to reach the AI engine.";
-      // Show the failure inline as an assistant turn so it is visible in-thread.
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          content: `⚠ ${message}`,
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ]);
-    } finally {
-      setThinking(false);
-    }
+    let acc = "";
+
+    const handle = conversationApi.streamMessage(
+      { conversation_id: conversationId, message: content },
+      (event) => {
+        switch (event.event) {
+          case "status": {
+            const payload = event.data as { status: string };
+            setStreamPhase(payload.status === "generating" ? "generating" : "thinking");
+            break;
+          }
+          case "token": {
+            const payload = event.data as { token: string };
+            acc += payload.token;
+            setStreamPhase("generating");
+            break;
+          }
+          case "completed": {
+            const payload = event.data as StreamCompletedPayload;
+            acc = payload.content;
+            setMessages((prev) => [
+              ...prev,
+              toChatMessage(conversationId, payload.content, payload, new Date()),
+            ]);
+            break;
+          }
+          case "error": {
+            const payload = event.data as { message: string };
+            appendError(payload.message);
+            break;
+          }
+          case "done": {
+            // Terminal event — if a `completed` event was missed, commit the
+            // accumulated tokens so the user never loses their reply.
+            if (acc) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.content === acc)) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: `a-${conversationId}-${Date.now()}`,
+                    role: "assistant",
+                    content: acc,
+                    time: new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                  },
+                ];
+              });
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      },
+      (message) => {
+        appendError(message);
+      },
+      () => {
+        setStreaming(false);
+        setStreamPhase("idle");
+        abortRef.current = null;
+      },
+    );
+
+    abortRef.current = handle.abort;
   }
 
   return (
@@ -253,7 +316,14 @@ export function AiChat() {
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-zinc-100">AI Copilot</p>
-          <p className="truncate text-[10px] text-zinc-500">Self-hosted · {selectedAgent}</p>
+          <p className="truncate text-[10px] text-zinc-500">
+            Self-hosted · {selectedAgent}
+            {streamPhase === "generating"
+              ? " · streaming"
+              : streamPhase === "thinking"
+                ? " · thinking"
+                : ""}
+          </p>
         </div>
         <select
           value={selectedAgent}
@@ -285,7 +355,13 @@ export function AiChat() {
             <AssistantMessage key={message.id} message={message} />
           ),
         )}
-        {thinking ? <TypingIndicator /> : null}
+        {streaming ? (
+          <TypingIndicator
+            label={
+              streamPhase === "generating" ? "Sentrix is generating…" : "Sentrix is reasoning…"
+            }
+          />
+        ) : null}
       </div>
 
       {/* Suggestions */}
@@ -320,16 +396,29 @@ export function AiChat() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={`Ask ${selectedAgent}…`}
-          className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none transition-colors focus:border-cyan-400/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-cyan-400/20"
+          disabled={streaming}
+          className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none transition-colors focus:border-cyan-400/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={!draft.trim() || thinking}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-600 text-zinc-950 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Send message"
-        >
-          <SendIcon className="h-4.5 w-4.5" />
-        </button>
+        {streaming ? (
+          <button
+            type="button"
+            onClick={stopStream}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/90 text-white transition-all hover:bg-red-500"
+            aria-label="Stop streaming"
+            title="Stop streaming"
+          >
+            <StopIcon className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!draft.trim() || streaming}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-600 text-zinc-950 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Send message"
+          >
+            <SendIcon className="h-4.5 w-4.5" />
+          </button>
+        )}
       </form>
     </section>
   );
