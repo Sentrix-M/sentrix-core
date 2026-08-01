@@ -1,0 +1,28 @@
+{
+  "name": "sentrix-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise AI-powered cybersecurity platform — Turborepo monorepo (web, api, agents, rag, ai).",
+  "license": "MIT",
+  "author": "Sentrix-M",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "node scripts/clean.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.6",
+    "turbo": "2.10.8"
+  }
+}
