@@ -1,0 +1,23 @@
+# Sentrix monorepo — pnpm workspace configuration
+# Any directory matching these globs becomes an isolated workspace package
+# whose dependencies are deduplicated and linked from the root store.
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm v11: approve build scripts for dependencies that require post-install
+# compilation (e.g. sharp image processor used by Next.js). unrs-resolver is
+# an optional transitive dep — no build script is required.
+allowBuilds:
+  sharp: true
+ignoredBuiltDependencies:
+  - unrs-resolver
+
+minimumReleaseAgeExclude:
+  - '@turbo/darwin-64@2.10.8'
+  - '@turbo/darwin-arm64@2.10.8'
+  - '@turbo/linux-64@2.10.8'
+  - '@turbo/linux-arm64@2.10.8'
+  - '@turbo/windows-64@2.10.8'
+  - '@turbo/windows-arm64@2.10.8'
+  - turbo@2.10.8
