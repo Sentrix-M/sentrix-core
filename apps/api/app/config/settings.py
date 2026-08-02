@@ -65,6 +65,18 @@ class Settings(BaseSettings):
             )
         return value
 
+    # AI provider selection
+    # `AI_PROVIDER` controls which provider the factory resolves by default.
+    # Supported values: "mock" (default), "gemini".
+    ai_provider: str = "mock"
+
+    # Google Gemini
+    # `GEMINI_API_KEY` authenticates the GeminiProvider. When it is missing,
+    # empty, or the SDK raises an auth error, the factory falls back to the
+    # offline MockProvider so the pipeline never fails at composition time.
+    gemini_api_key: str = Field(default="", repr=False)
+    gemini_model: str = "gemini-2.0-flash"
+
     # Seed admin — used only by the in-memory repository for local development.
     admin_email: str = "admin@sentrix.io"
     admin_password: str = "ChangeMe_123!"

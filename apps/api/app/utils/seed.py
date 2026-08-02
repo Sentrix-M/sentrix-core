@@ -7,9 +7,8 @@ durable (PostgreSQL) repository is enabled.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import uuid
+from datetime import datetime, timezone
 
 from app.config.settings import Settings
 from app.core.security import hash_password

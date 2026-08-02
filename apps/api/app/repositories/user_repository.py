@@ -14,7 +14,6 @@ The service layer depends only on ``UserRepository`` protocol.
 from __future__ import annotations
 
 import threading
-import uuid
 from datetime import datetime, timezone
 from typing import Protocol
 

@@ -13,7 +13,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_conversation_service
+from app.api.deps import get_conversation_service, get_current_user
+from app.models.user import User
 from app.schemas.conversation import (
     ConversationMessageRequest,
     ConversationMessageResponse,
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 )
 async def send_message(
     payload: ConversationMessageRequest,
+    current_user: Annotated[User, Depends(get_current_user)],  # noqa: ARG001 - auth guard
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ConversationMessageResponse:
     """Send a user message and receive an assistant response.
@@ -50,6 +52,7 @@ async def send_message(
 )
 async def stream_message(
     payload: ConversationMessageRequest,
+    current_user: Annotated[User, Depends(get_current_user)],  # noqa: ARG001 - auth guard
 ) -> StreamingResponse:
     """Stream the assistant reply as Server-Sent Events.
 

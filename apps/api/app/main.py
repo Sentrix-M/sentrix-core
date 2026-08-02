@@ -6,8 +6,8 @@ CORS, and the versioned v1 router.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.config.settings import get_settings
+from app.rag.repository import InMemoryDocumentRepository
+from app.rag.service import RagService
 from app.repositories.refresh_token_repository import InMemoryRefreshTokenRepository
 from app.repositories.user_repository import InMemoryUserRepository
 from app.services.conversation_service import ConversationService
@@ -34,9 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.user_repository = user_repository
     app.state.refresh_token_repository = refresh_token_repository
 
-    # Conversation engine — stateless and mock-backed for now. The real AI
-    # router/RAG/tool layers can be injected here without touching the routers.
+    # Conversation engine — stateless and mock-backed for now.
     app.state.conversation_service = ConversationService()
+
+    # RAG document ingestion engine — in-memory for development.
+    document_repository = InMemoryDocumentRepository()
+    app.state.rag_service = RagService(repository=document_repository)
 
     # Seed the default admin account for local development.
     await seed_admin_user(user_repository, settings)
@@ -83,4 +88,3 @@ async def health() -> dict[str, str]:
         "service": settings.app_name,
         "version": settings.app_version,
     }
-

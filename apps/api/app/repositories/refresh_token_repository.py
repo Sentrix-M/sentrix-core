@@ -68,15 +68,18 @@ class InMemoryRefreshTokenRepository:
         revoked = 0
         with self._lock:
             for jti, token in list(self._tokens.items()):
-                if token.user_id == user_id and token.org_id == org_id:
-                    if token.state != RefreshTokenState.REVOKED:
-                        self._tokens[jti] = token.model_copy(
-                            update={
-                                "state": RefreshTokenState.REVOKED,
-                                "updated_at": now,
-                            }
-                        )
-                        revoked += 1
+                if (
+                    token.user_id == user_id
+                    and token.org_id == org_id
+                    and token.state != RefreshTokenState.REVOKED
+                ):
+                    self._tokens[jti] = token.model_copy(
+                        update={
+                            "state": RefreshTokenState.REVOKED,
+                            "updated_at": now,
+                        }
+                    )
+                    revoked += 1
         return revoked
 
 

@@ -13,20 +13,17 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config.settings import Settings, get_settings
 from app.core.exceptions import (
-    InsufficientPermissionsError,
-    InvalidTokenError,
     SentrixError,
 )
 from app.models.user import User
+from app.rag.service import RagService
 from app.repositories.refresh_token_repository import (
-    InMemoryRefreshTokenRepository,
     RefreshTokenRepository,
 )
-from app.repositories.user_repository import InMemoryUserRepository, UserRepository
+from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
 from app.services.conversation_service import ConversationService
 from app.services.token_service import TokenService
-from app.utils.seed import seed_admin_user
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -69,12 +66,22 @@ def get_conversation_service(request: Request) -> ConversationService:
     return service
 
 
+def get_rag_service(request: Request) -> RagService:
+    """Return the shared RAG service stored on application state."""
+    service = getattr(request.app.state, "rag_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="RAG service is not initialized.",
+        )
+    return service
+
+
 def get_auth_service(
     user_repository: Annotated[UserRepository, Depends(get_user_repository)],
     refresh_token_repository: Annotated[
         RefreshTokenRepository, Depends(get_refresh_token_repository)
     ],
-    request: Request,
 ) -> AuthService:
     """Construct the shared auth service from app state repositories."""
     settings = get_settings()

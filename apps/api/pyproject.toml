@@ -28,6 +28,9 @@ dependencies = [
     "pyjwt>=2.9.0",
     "pwdlib[argon2]>=0.2.1",
     "email-validator>=2.2.0",
+    "google-genai>=1.0.0",
+    "PyMuPDF>=1.25.0",
+    "chromadb>=1.5.0",
 ]
 
 [project.optional-dependencies]
@@ -59,4 +62,5 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+asyncio_mode = "auto"
 

@@ -50,17 +50,22 @@ def build_kernel_pipeline(
 ) -> KernelPipeline:
     """Compose a :class:`KernelPipeline` wired with a provider from ``factory``.
 
+    When ``provider`` is ``None`` (the default), the factory's own default
+    is used — which reads ``AI_PROVIDER`` from the application settings,
+    so ``AI_PROVIDER=gemini`` is honoured automatically.  Passing an
+    explicit ``provider`` overrides the setting.
+
     :param factory: Provider factory to source the provider from. Defaults to
         a new :class:`ProviderFactory` (which returns ``MockProvider``).
-    :param provider: Provider name to use; defaults to
-        :data:`~app.providers.factory.DEFAULT_PROVIDER`.
+    :param provider: Provider name to use; defaults to the factory's default
+        (which resolves ``AI_PROVIDER`` from settings).
     :param system_prompt: System instructions for the pipeline.
     :param memory_manager: Optional :class:`MemoryManager` used as the kernel
         context builder.  When omitted, an :class:`InMemoryContextProvider`
         is used (backwards-compatible default).
     """
     provider_factory = factory or ProviderFactory()
-    provider_name = provider or DEFAULT_PROVIDER
+    provider_name = provider or provider_factory._resolve_default()
     provider_instance = provider_factory.create(provider_name)
 
     registry = ProviderRegistry()
