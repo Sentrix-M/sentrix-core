@@ -112,9 +112,18 @@ class SearchResponse(BaseModel):
     total: int
 
 
+class Citation(BaseModel):
+    """A single citation with source metadata."""
+
+    filename: str = Field(description="Source filename.")
+    page: int = Field(description="Source page number (1-indexed).")
+    chunk: str = Field(description="Chunk ID or text excerpt.")
+
+
 __all__ = [
     "Chunk",
     "ChunkListResponse",
+    "Citation",
     "Document",
     "DocumentListResponse",
     "DocumentSummary",

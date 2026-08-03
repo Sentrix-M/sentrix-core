@@ -35,6 +35,7 @@ from app.rag.retriever import SemanticRetriever
 from app.rag.schemas import (
     Chunk,
     ChunkListResponse,
+    Citation,
     Document,
     DocumentListResponse,
     DocumentSummary,
@@ -57,6 +58,7 @@ __all__ = [
     "Chunk",
     "ChunkingConfig",
     "ChunkListResponse",
+    "Citation",
     "DEFAULT_COLLECTION",
     "DEFAULT_EMBEDDING_MODEL",
     "Document",

@@ -8,6 +8,7 @@ provided through a secure secret manager in production deployments.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -18,7 +19,9 @@ class Settings(BaseSettings):
     """Typed application configuration."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Resolve `.env` relative to the API package root (`apps/api/.env`)
+        # so the file is found regardless of the process working directory.
+        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

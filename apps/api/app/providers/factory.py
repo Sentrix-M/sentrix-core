@@ -83,6 +83,7 @@ class ProviderFactory:
             fallback is not available.
         """
         provider_name = name or self._resolve_default()
+        logger.info("ProviderFactory.create() — requested provider: %s", provider_name)
         try:
             constructor = self._constructors[provider_name]
         except KeyError:
@@ -92,7 +93,13 @@ class ProviderFactory:
             ) from None
 
         try:
-            return constructor()
+            instance = constructor()
+            logger.info(
+                "ProviderFactory created provider: name=%s  type=%s",
+                instance.name,
+                type(instance).__name__,
+            )
+            return instance
         except Exception as exc:  # noqa: BLE001 - catch Gemini init errors
             if provider_name == DEFAULT_PROVIDER:
                 # The default provider itself failed — re-raise.
@@ -104,6 +111,7 @@ class ProviderFactory:
                 DEFAULT_PROVIDER,
             )
             # Fall back to the mock provider.
+            logger.info("ProviderFactory — fallback to MockProvider (reason: %s)", exc)
             return MockProvider()
 
     def _resolve_default(self) -> str:

@@ -90,3 +90,35 @@ class TokenAlreadyRevokedError(SentrixError):
     error_code = "token_already_revoked"
     message = "The token has already been revoked."
 
+
+class ToolExecutionError(SentrixError):
+    """Raised when a tool execution fails."""
+
+    status_code = 500
+    error_code = "tool_execution_error"
+    message = "Tool execution failed."
+
+
+class ToolTimeoutError(SentrixError):
+    """Raised when a tool execution exceeds its timeout."""
+
+    status_code = 408
+    error_code = "tool_timeout"
+    message = "Tool execution timed out."
+
+
+class ToolPermissionError(SentrixError):
+    """Raised when the caller lacks permissions for a tool."""
+
+    status_code = 403
+    error_code = "tool_permission_denied"
+    message = "Insufficient permissions to execute this tool."
+
+
+class ToolNotFoundError(SentrixError):
+    """Raised when a requested tool is not registered."""
+
+    status_code = 404
+    error_code = "tool_not_found"
+    message = "The requested tool was not found."
+

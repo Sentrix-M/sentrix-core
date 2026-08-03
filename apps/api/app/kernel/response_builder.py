@@ -28,6 +28,7 @@ class ProviderOutput:
     tools_used: tuple[str, ...] = ()
     model: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    citations: tuple[dict[str, object], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class KernelResponse:
     tools_used: tuple[str, ...] = ()
     model: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    citations: tuple[dict[str, object], ...] = field(default_factory=tuple)
 
 
 class ResponseBuilder(Protocol):
@@ -74,6 +76,7 @@ class DefaultResponseBuilder:
             tools_used=tuple(output.tools_used),
             model=output.model,
             metadata=dict(output.metadata),
+            citations=tuple(output.citations),
         )
 
 

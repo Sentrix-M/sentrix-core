@@ -6,6 +6,7 @@ CORS, and the versioned v1 router.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,12 +16,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.config.settings import get_settings
+from app.providers.factory import ProviderFactory
 from app.rag.repository import InMemoryDocumentRepository
 from app.rag.service import RagService
 from app.repositories.refresh_token_repository import InMemoryRefreshTokenRepository
 from app.repositories.user_repository import InMemoryUserRepository
 from app.services.conversation_service import ConversationService
+from app.tools.executor import ToolExecutor
+from app.tools.mock_tools import (
+    MockFilesystemTool,
+    MockPythonTool,
+    MockTerminalTool,
+)
+from app.tools.registry import ToolRegistry
 from app.utils.seed import seed_admin_user
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -28,6 +39,31 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifecycle: initialize repositories and seed data."""
+
+    # ------------------------------------------------------------------
+    # Provider diagnostics — log every startup so the operator can see
+    # which AI provider is actually selected and why.
+    # ------------------------------------------------------------------
+    has_key = bool(settings.gemini_api_key.strip())
+    logger.info(
+        "AI_PROVIDER=%s  GEMINI_MODEL=%s  GEMINI_API_KEY=%s",
+        settings.ai_provider,
+        settings.gemini_model,
+        "present" if has_key else "MISSING — will fall back to MockProvider",
+    )
+
+    factory = ProviderFactory()
+    try:
+        provider = factory.create()
+        logger.info(
+            "ProviderFactory resolved provider: name=%s  type=%s",
+            provider.name,
+            type(provider).__name__,
+        )
+    except Exception as exc:
+        logger.warning("ProviderFactory failed to create provider: %s", exc)
+    # ------------------------------------------------------------------
+
     # Development store. Swap for PostgreSQLUserRepository when the DB layer
     # is implemented.
     user_repository = InMemoryUserRepository()
@@ -42,6 +78,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # RAG document ingestion engine — in-memory for development.
     document_repository = InMemoryDocumentRepository()
     app.state.rag_service = RagService(repository=document_repository)
+
+    # Tool Engine — standalone foundation (not yet connected to the Kernel).
+    tool_registry = ToolRegistry()
+    tool_registry.register(MockFilesystemTool())
+    tool_registry.register(MockTerminalTool())
+    tool_registry.register(MockPythonTool())
+    app.state.tool_executor = ToolExecutor(registry=tool_registry)
 
     # Seed the default admin account for local development.
     await seed_admin_user(user_repository, settings)

@@ -55,6 +55,12 @@ TOOLS_EXECUTE = "tools:execute"
 REPORTS_GENERATE = "reports:generate"
 AGENTS_RUN = "agents:run"
 
+# Tool engine resources
+FILESYSTEM_READ = "filesystem:read"
+FILESYSTEM_WRITE = "filesystem:write"
+TERMINAL_EXECUTE = "terminal:execute"
+PYTHON_EXECUTE = "python:execute"
+
 # Integration & admin
 INTEGRATIONS_MANAGE = "integrations:manage"
 BILLING_MANAGE = "billing:manage"
@@ -103,6 +109,10 @@ ROLE_CATALOG: dict[str, Role] = {
             HUNTS_RUN,
             FORENSICS_RUN,
             TOOLS_EXECUTE,
+            FILESYSTEM_READ,
+            FILESYSTEM_WRITE,
+            TERMINAL_EXECUTE,
+            PYTHON_EXECUTE,
             REPORTS_GENERATE,
             AGENTS_RUN,
             INTEGRATIONS_MANAGE,

@@ -24,6 +24,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
 from app.services.conversation_service import ConversationService
 from app.services.token_service import TokenService
+from app.tools.executor import ToolExecutor
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -159,6 +160,17 @@ def require_permission(permission: str):
         return user
 
     return dependency
+
+
+def get_tool_executor(request: Request) -> ToolExecutor:
+    """Return the tool executor stored on application state."""
+    executor = getattr(request.app.state, "tool_executor", None)
+    if executor is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Tool executor is not initialized.",
+        )
+    return executor
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

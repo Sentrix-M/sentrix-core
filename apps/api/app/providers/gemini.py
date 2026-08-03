@@ -67,21 +67,43 @@ def _extract_text_from_response(response: object) -> str:
     return ""
 
 
-def _build_content_parts(prompt: Prompt) -> list[dict[str, str]]:
-    """Convert a :class:`Prompt` into Gemini ``contents`` parts.
+def _build_content_parts(prompt: Prompt) -> list[dict[str, object]]:
+    """Convert a :class:`Prompt` into Gemini ``contents`` entries.
 
+    The google-genai SDK (v2.x) expects ``contents`` to be a list of
+    ``Content`` dicts shaped ``{"role": "user"|"model", "parts": [{"text": ...}]}``.
     The pipeline's ``Prompt`` already holds ``system``, ``messages``, and
-    ``instruction``; we flatten the user/history turns into the natural
-    chat-style ordering Gemini expects.
+    ``instruction``:
+
+    - ``prompt.system`` is delivered via ``config.system_instruction`` (the
+      Gemini API does not accept a ``system`` role inside ``contents``).
+    - ``prompt.messages`` (the current user turn plus any prior turns) are
+      flattened into chat-style ``Content`` entries. Any assistant/model
+      history is mapped to the ``"model"`` role.
+    - ``prompt.instruction`` is appended to the final user message so the
+      per-turn instruction is preserved in the request.
     """
-    parts: list[dict[str, str]] = []
-    if prompt.system:
-        parts.append({"role": "system", "text": prompt.system})
+    entries: list[dict[str, object]] = []
+    last_user_index = -1
     for message in prompt.messages:
-        parts.append({"role": message.role, "text": message.content})
+        raw_role = (message.role or "").lower()
+        role = "model" if raw_role in ("model", "assistant") else "user"
+        entries.append({"role": role, "parts": [{"text": message.content}]})
+        if role == "user":
+            last_user_index = len(entries) - 1
+
     if prompt.instruction:
-        parts.append({"role": "user", "text": f"Instruction: {prompt.instruction}"})
-    return parts
+        text = f"Instruction: {prompt.instruction}"
+        if last_user_index >= 0:
+            parts = entries[last_user_index]["parts"]
+            assert isinstance(parts, list) and parts
+            first = parts[0]
+            assert isinstance(first, dict)
+            first["text"] = f"{first['text']}\n{text}"
+        else:
+            entries.append({"role": "user", "parts": [{"text": text}]})
+
+    return entries
 
 
 class GeminiProvider(BaseProvider):  # type: ignore[misc]
@@ -135,11 +157,19 @@ class GeminiProvider(BaseProvider):  # type: ignore[misc]
 
     def generate(self, prompt: Prompt) -> ProviderOutput:
         """Generate a completion for ``prompt`` via the Gemini API."""
-        parts = _build_content_parts(prompt)
+        contents = _build_content_parts(prompt)
+        config = {"system_instruction": prompt.system} if prompt.system else None
+        logger.info(
+            "GeminiProvider.generate — model=%s  contents=%d  system_instruction=%s",
+            self.model,
+            len(contents),
+            "present" if prompt.system else "absent",
+        )
         try:
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=parts,
+                contents=contents,
+                config=config,
             )
         except GeminiNotConfiguredError:
             raise
@@ -168,11 +198,19 @@ class GeminiProvider(BaseProvider):  # type: ignore[misc]
         words so the SSE layer (``streaming/manager.py``) can replay them
         token by token — no streaming contract changes required.
         """
-        parts = _build_content_parts(prompt)
+        contents = _build_content_parts(prompt)
+        config = {"system_instruction": prompt.system} if prompt.system else None
+        logger.info(
+            "GeminiProvider.stream — model=%s  contents=%d  system_instruction=%s",
+            self.model,
+            len(contents),
+            "present" if prompt.system else "absent",
+        )
         try:
             stream = self.client.models.generate_content_stream(
                 model=self.model,
-                contents=parts,
+                contents=contents,
+                config=config,
             )
         except Exception as exc:  # noqa: BLE001 - normalize SDK/network errors
             logger.exception("Gemini generate_content_stream failed.")

@@ -9,6 +9,8 @@ No network access is used anywhere.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from app.kernel.context_builder import ContextMessage, ConversationContext
@@ -39,6 +41,19 @@ def _make_prompt(message: str = "Analyze the log file") -> Prompt:
         context=context,
         system="You are a SOC analyst.",
         instruction="Be concise.",
+    )
+
+
+def _patch_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force deterministic settings (mock provider, default model) for tests.
+
+    Tests must not depend on the developer's environment (AI_PROVIDER,
+    GEMINI_API_KEY, GEMINI_MODEL). This patches ``get_settings`` so the
+    factory resolves the mock provider and the Gemini model is the default.
+    """
+    monkeypatch.setattr(
+        "app.config.settings.get_settings",
+        lambda: _SettingsWithNoKey(),
     )
 
 
@@ -156,7 +171,8 @@ class TestMockProvider:
 
 
 class TestProviderFactory:
-    def test_default_provider_is_mock(self) -> None:
+    def test_default_provider_is_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         assert DEFAULT_PROVIDER == "mock"
         factory = ProviderFactory()
         provider = factory.create()
@@ -203,14 +219,18 @@ class TestProviderFactory:
 
 
 class TestKernelIntegration:
-    def test_build_kernel_pipeline_registers_mock_provider(self) -> None:
+    def test_build_kernel_pipeline_registers_mock_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_settings(monkeypatch)
         from app.kernel.integration import build_kernel_pipeline
 
         pipeline = build_kernel_pipeline()
         assert isinstance(pipeline.registry, ProviderRegistry)
         assert "mock" in pipeline.registry.names()
 
-    def test_build_kernel_pipeline_runs_turn(self) -> None:
+    def test_build_kernel_pipeline_runs_turn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         from app.kernel.integration import build_kernel_pipeline
         from app.kernel.response_builder import KernelResponse
 
@@ -316,15 +336,29 @@ class _FakeGeminiModels:
     def __init__(self, *, response_text: str, stream_chunks: list[str] | None = None) -> None:
         self.response_text = response_text
         self.stream_chunks = stream_chunks or []
-        self.generated_calls: list[tuple[str, list[dict[str, str]]]] = []
-        self.stream_calls: list[tuple[str, list[dict[str, str]]]] = []
+        self.generated_calls: list[
+            tuple[str, list[dict[str, object]], dict[str, object] | None]
+        ] = []
+        self.stream_calls: list[
+            tuple[str, list[dict[str, object]], dict[str, object] | None]
+        ] = []
 
-    def generate_content(self, model: str, contents: list[dict[str, str]]):
-        self.generated_calls.append((model, contents))
+    def generate_content(
+        self,
+        model: str,
+        contents: list[dict[str, object]],
+        config: dict[str, object] | None = None,
+    ):
+        self.generated_calls.append((model, contents, config))
         return _FakeGeminiResponse(self.response_text)
 
-    def generate_content_stream(self, model: str, contents: list[dict[str, str]]):
-        self.stream_calls.append((model, contents))
+    def generate_content_stream(
+        self,
+        model: str,
+        contents: list[dict[str, object]],
+        config: dict[str, object] | None = None,
+    ):
+        self.stream_calls.append((model, contents, config))
         return [
             _FakeGeminiResponse(chunk)
             for chunk in self.stream_chunks
@@ -358,7 +392,8 @@ class TestGeminiProvider:
         with pytest.raises(GeminiNotConfiguredError):
             GeminiProvider(api_key="   ")
 
-    def test_generate_returns_normalized_output(self) -> None:
+    def test_generate_returns_normalized_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         fake = _FakeGeminiClient(response_text="Beacon detected on LAB-07.")
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
         output = provider.generate(_make_prompt("Investigate the beacon"))
@@ -367,24 +402,33 @@ class TestGeminiProvider:
         assert output.metadata["provider"] == "gemini"
         assert output.metadata["mode"] == "cloud"
 
-    def test_generate_passes_model_and_contents(self) -> None:
+    def test_generate_passes_model_and_contents(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         fake = _FakeGeminiClient(response_text="ok")
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
         prompt = _make_prompt("Analyze the log file")
         provider.generate(prompt)
         assert fake.models.generated_calls
-        model, contents = fake.models.generated_calls[0]
+        model, contents, _config = fake.models.generated_calls[0]
         assert model == "gemini-2.0-flash"
         assert isinstance(contents, list)
         assert contents
 
-    def test_generate_ranks_parts_with_system(self) -> None:
+    def test_generate_ranks_parts_with_system(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         fake = _FakeGeminiClient(response_text="ok")
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
         provider.generate(_make_prompt("Analyze the log file"))
-        parts = fake.models.generated_calls[0][1]
-        assert parts[0]["role"] == "system"
-        assert parts[0]["text"] == "You are a SOC analyst."
+        model, contents, config = fake.models.generated_calls[0]
+        assert model == "gemini-2.0-flash"
+        # The system prompt is delivered via config.system_instruction, not
+        # as a "system" role inside contents (as required by google-genai v2.x).
+        assert config is not None
+        assert config["system_instruction"] == "You are a SOC analyst."
+        # contents carry only user/model turns with parts[].text.
+        assert contents[0]["role"] == "user"
+        parts = cast(list[dict[str, object]], contents[0]["parts"])
+        assert "Analyze the log file" in cast(str, parts[0]["text"])
 
     def test_generate_raises_on_empty_response(self) -> None:
         fake = _FakeGeminiClient(response_text="")
@@ -397,7 +441,12 @@ class TestGeminiProvider:
             def __init__(self) -> None:
                 super().__init__(response_text="")
 
-            def generate_content(self, model: str, contents: list[dict[str, str]]):  # noqa: ARG002
+            def generate_content(
+                self,
+                model: str,
+                contents: list[dict[str, object]],  # noqa: ARG002
+                config: dict[str, object] | None = None,  # noqa: ARG002
+            ):
                 raise RuntimeError("boom")
 
         fake = _FakeGeminiClient(response_text="")
