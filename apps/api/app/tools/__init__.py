@@ -24,6 +24,7 @@ from app.tools.nmap_tool import NmapTool
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.tools.sandbox import MockSandbox, Sandbox
+from app.tools.virustotal_tool import VirusTotalTool
 
 __all__ = [
     "BaseTool",
@@ -33,6 +34,7 @@ __all__ = [
     "MockTerminalTool",
     "NmapTool",
     "Sandbox",
+    "VirusTotalTool",
     "ToolCancelledError",
     "ToolExecutionError",
     "ToolExecutor",

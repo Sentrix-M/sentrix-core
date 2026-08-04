@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="", repr=False)
     gemini_model: str = "gemini-3.5-flash"
 
+    # VirusTotal threat intelligence
+    # `VIRUSTOTAL_API_KEY` authenticates the VirusTotalTool. When it is
+    # missing or empty, the tool reports an unhealthy state and returns a
+    # clear structured error on execute.
+    virustotal_api_key: str = Field(default="", repr=False)
+    # Base URL for the VirusTotal REST API v3.
+    virustotal_base_url: str = "https://www.virustotal.com/api/v3"
+
     # Seed admin — used only by the in-memory repository for local development.
     admin_email: str = "admin@sentrix.io"
     admin_password: str = "ChangeMe_123!"
@@ -91,4 +99,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return a cached settings instance."""
     return Settings()
-

@@ -21,4 +21,30 @@
 ### Verification
 - [x] Run Ruff on apps/api
 - [x] Run full pytest suite (hermetic/offline)
-- [ ] End-to-end: User -> Tool Router -> Nmap Tool -> Parsed JSON -> Gemini explanation -> Streaming response
+
+## Phase 9 — VirusTotal Integration
+
+### Implementation
+- [ ] Create `apps/api/app/tools/virustotal_tool.py` — `VirusTotalTool` implementing `BaseTool`
+  - [ ] Auto-detect indicator type (MD5/SHA1/SHA256/IPv4/IPv6/Domain/URL)
+  - [ ] Async httpx client with timeout, retry with exponential backoff (respect Retry-After)
+  - [ ] Rich structured output (query, indicator_type, reputation, malicious, suspicious, harmless, undetected, last_analysis_stats, categories, tags, country, asn, owner, permalink, raw)
+  - [ ] Graceful handling of missing key, invalid indicator, HTTP errors, network failures, rate limits
+  - [ ] Injectable client factory for tests
+- [ ] Create `apps/api/tests/test_virustotal_tool.py` — unit tests with mocked HTTP responses
+  - [ ] File hash / IP / Domain / URL lookups
+  - [ ] Indicator type detection
+  - [ ] Missing key, invalid indicator, rate limit, network failure
+  - [ ] Health, schema, permissions
+
+### Integration
+- [ ] Register `VirusTotalTool()` in `apps/api/app/main.py` tool registry
+- [ ] Export `VirusTotalTool` in `apps/api/app/tools/__init__.py`
+- [ ] Add `VIRUSTOTAL_API_KEY` to `apps/api/app/config/settings.py` + `.env.example`
+- [ ] Add VirusTotal intent markers + auto type detection in `apps/api/app/kernel/tool_integration.py`
+- [ ] Add `threatintel:read` permission in `apps/api/app/models/role.py`; grant to admin + SOC_ANALYST/THREAT_HUNTER/RED_TEAM/SECURITY_ENGINEER
+
+### Verification
+- [ ] Run Ruff on apps/api
+- [ ] Run full pytest suite (hermetic/offline)
+- [ ] End-to-end: User -> Tool Router -> VirusTotal Tool -> Tool Executor -> Kernel -> Gemini explanation -> Streaming UI

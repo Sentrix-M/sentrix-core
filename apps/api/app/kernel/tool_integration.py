@@ -6,8 +6,8 @@ Router, execute the selected tool, and return the result so the pipeline can
 feed it back into the prompt builder.
 
 The coordinator is deliberately conservative: it recognises a small set of
-tool intents (filesystem, python, terminal, nmap) using deterministic keyword
-matching, and always resolves through the existing
+tool intents (filesystem, python, terminal, nmap, virustotal) using
+deterministic keyword matching, and always resolves through the existing
 ``ToolExecutor``/``ToolRouter``/``ToolRegistry`` stack. Only the registered
 mock tools are ever executed — real command execution is out of scope until a
 real sandbox is added.
@@ -31,6 +31,7 @@ _DEFAULT_COMMAND = "whoami"
 _DEFAULT_CODE = "print('hello')"
 _DEFAULT_PATH = "/documents/report.txt"
 _DEFAULT_HOST = "127.0.0.1"
+_DEFAULT_VT_QUERY = "44d88612fea8a8f36de82e1278abb02f"
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,46 @@ def _extract_host(message: str) -> str:
     if match:
         return match.group(1).strip()
     return _DEFAULT_HOST
+
+
+def _extract_vt_query(message: str) -> str:
+    """Best-effort extraction of a security indicator for VirusTotal lookup.
+
+    Recognises, in order: MD5/SHA1/SHA256 hashes, IPv4/IPv6 addresses,
+    URLs, and domains. Falls back to a known test hash.
+    """
+    quoted = _extract_quoted(message, re.compile(r"""["']([^"']+)["']"""))
+    if quoted:
+        return quoted
+
+    hash_match = re.search(
+        r"\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b",
+        message,
+    )
+    if hash_match:
+        return hash_match.group(0)
+
+    ip_match = re.search(
+        r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}"
+        r"(?:25[0-5]|2[0-4]\d|1?\d?\d)\b",
+        message,
+    )
+    if ip_match:
+        return ip_match.group(0)
+
+    url_match = re.search(r"https?://[^\s]+", message)
+    if url_match:
+        return url_match.group(0)
+
+    domain_match = re.search(
+        r"(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+"
+        r"[a-zA-Z]{2,}",
+        message,
+    )
+    if domain_match:
+        return domain_match.group(0)
+
+    return _DEFAULT_VT_QUERY
 
 
 def _extract_code(message: str) -> str:
@@ -208,6 +249,24 @@ class ToolCoordinator:
         "scan the address",
     )
 
+    #: Message patterns that trigger the VirusTotal *threat-intel* intent.
+    VIRUSTOTAL_MARKERS: tuple[str, ...] = (
+        "analyze hash",
+        "analyze the hash",
+        "virus total",
+        "virustotal",
+        "vt lookup",
+        "vt scan",
+        "check ip reputation",
+        "ip reputation",
+        "analyze domain",
+        "analyze the domain",
+        "analyze url",
+        "analyze the url",
+        "check the hash",
+        "check hash",
+    )
+
     def __init__(self, executor: ToolExecutor) -> None:
         self._executor = executor
 
@@ -262,6 +321,13 @@ class ToolCoordinator:
                 input={"host": _extract_host(message)},
                 confidence=0.95,
                 reason="User asked to run a network or port scan.",
+            )
+        if any(marker in lower for marker in self.VIRUSTOTAL_MARKERS):
+            return ToolDecision(
+                tool_name="virustotal",
+                input={"query": _extract_vt_query(message)},
+                confidence=0.9,
+                reason="User asked to analyze a security indicator on VirusTotal.",
             )
         return None
 
@@ -323,3 +389,4 @@ class ToolCoordinator:
 
 
 __all__ = ["ToolCoordinator", "ToolDecision"]
+

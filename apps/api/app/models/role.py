@@ -62,6 +62,9 @@ TERMINAL_EXECUTE = "terminal:execute"
 PYTHON_EXECUTE = "python:execute"
 NETWORK_SCAN = "network:scan"
 
+# Threat intelligence
+THREATINTEL_READ = "threatintel:read"
+
 # Integration & admin
 INTEGRATIONS_MANAGE = "integrations:manage"
 BILLING_MANAGE = "billing:manage"
@@ -114,7 +117,8 @@ FILESYSTEM_READ,
             FILESYSTEM_WRITE,
             TERMINAL_EXECUTE,
             PYTHON_EXECUTE,
-            NETWORK_SCAN,
+NETWORK_SCAN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
             AGENTS_RUN,
             INTEGRATIONS_MANAGE,
@@ -125,11 +129,12 @@ FILESYSTEM_READ,
     RoleName.SOC_ANALYST.value: Role(
         RoleName.SOC_ANALYST,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             ALERTS_TRIAGE,
             INVESTIGATIONS_READ,
             INVESTIGATIONS_WRITE,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Tiered SOC analyst: triage, investigate, and report.",
@@ -137,10 +142,11 @@ FILESYSTEM_READ,
     RoleName.THREAT_HUNTER.value: Role(
         RoleName.THREAT_HUNTER,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             INVESTIGATIONS_READ,
             HUNTS_RUN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Proactive threat hunting across telemetry.",
@@ -161,10 +167,11 @@ FILESYSTEM_READ,
     RoleName.RED_TEAM.value: Role(
 RoleName.RED_TEAM,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
             NETWORK_SCAN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Offensive security assessments and controlled tooling.",
@@ -185,11 +192,12 @@ RoleName.RED_TEAM,
     RoleName.SECURITY_ENGINEER.value: Role(
 RoleName.SECURITY_ENGINEER,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
             NETWORK_SCAN,
+            THREATINTEL_READ,
             INTEGRATIONS_MANAGE,
             REPORTS_GENERATE,
         },
