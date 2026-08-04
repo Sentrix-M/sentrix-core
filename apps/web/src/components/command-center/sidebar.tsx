@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   BookIcon,
@@ -16,7 +16,8 @@ import {
   SparklesIcon,
   WrenchIcon,
 } from "@/components/command-center/icons";
-import { currentUser, kernelStatus } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { kernelStatus } from "@/lib/mock-data";
 
 type NavItem = {
   href: string;
@@ -52,6 +53,17 @@ const usage = {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const initials = user
+    ? (() => {
+        const parts = user.full_name.trim().split(/\s+/);
+        return parts.length >= 2
+          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+          : parts[0]?.slice(0, 2).toUpperCase() ?? "?";
+      })()
+    : "?";
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-white/[0.06] bg-zinc-950/70 backdrop-blur-2xl">
@@ -173,12 +185,24 @@ export function Sidebar() {
       <div className="border-t border-white/[0.06] p-3">
         <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/80 to-violet-600/80 text-[11px] font-bold text-white">
-            {currentUser.initials}
+            {initials}
           </div>
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-[13px] font-medium text-zinc-200">{currentUser.name}</p>
-            <p className="truncate text-[10px] text-zinc-500">{currentUser.title}</p>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-[13px] font-medium text-zinc-200">{user?.full_name ?? "User"}</p>
+            <p className="truncate text-[10px] text-zinc-500">{user?.email ?? ""}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              router.push("/login");
+            }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-[10px] text-zinc-500 transition-colors hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-300"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            ←
+          </button>
         </div>
       </div>
     </aside>

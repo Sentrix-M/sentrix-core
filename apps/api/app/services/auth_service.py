@@ -76,7 +76,7 @@ class AuthService:
         now = datetime.now(timezone.utc)
         user = User(
             id=str(uuid.uuid4()),
-            email=request.email,
+            email=email,
             full_name=request.full_name.strip(),
             password_hash=hash_password(request.password),
             role=self.DEFAULT_REGISTER_ROLE,

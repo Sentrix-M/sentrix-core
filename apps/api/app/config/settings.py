@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # empty, or the SDK raises an auth error, the factory falls back to the
     # offline MockProvider so the pipeline never fails at composition time.
     gemini_api_key: str = Field(default="", repr=False)
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     # Seed admin — used only by the in-memory repository for local development.
     admin_email: str = "admin@sentrix.io"

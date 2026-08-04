@@ -1,3 +1,5 @@
+"use client";
+
 import {
   AlertIcon,
   CrosshairIcon,
@@ -13,7 +15,8 @@ import {
   SystemHealth,
   ToolStatus,
 } from "@/components/command-center/widgets";
-import { currentUser, kernelStatus, type QuickAction, quickActions } from "@/lib/mock-data";
+import { kernelStatus, type QuickAction, quickActions } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
 
 const actionIcons: Record<QuickAction["icon"], typeof SparklesIcon> = {
   logs: RadarIcon,
@@ -42,6 +45,9 @@ function QuickActionCard({ action }: { action: QuickAction }) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const firstName = user?.full_name.split(" ")[0] ?? "User";
+
   return (
     <div className="flex flex-col gap-5">
       {/* Greeting banner */}
@@ -62,12 +68,12 @@ export default function DashboardPage() {
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl">
               Welcome back,{" "}
               <span className="bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">
-                {currentUser.name.split(" ")[0]}
+                {firstName}
               </span>
             </h1>
             <p className="mt-1.5 text-sm text-zinc-400">
               <span className="font-semibold text-emerald-300">{kernelStatus.sinceLabel}</span> ·
-              Kernel online for {kernelStatus.uptime} · {currentUser.title}
+              Kernel online for {kernelStatus.uptime} · {user?.role ?? "Analyst"}
             </p>
           </div>
 

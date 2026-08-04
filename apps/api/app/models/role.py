@@ -60,6 +60,7 @@ FILESYSTEM_READ = "filesystem:read"
 FILESYSTEM_WRITE = "filesystem:write"
 TERMINAL_EXECUTE = "terminal:execute"
 PYTHON_EXECUTE = "python:execute"
+NETWORK_SCAN = "network:scan"
 
 # Integration & admin
 INTEGRATIONS_MANAGE = "integrations:manage"
@@ -109,10 +110,11 @@ ROLE_CATALOG: dict[str, Role] = {
             HUNTS_RUN,
             FORENSICS_RUN,
             TOOLS_EXECUTE,
-            FILESYSTEM_READ,
+FILESYSTEM_READ,
             FILESYSTEM_WRITE,
             TERMINAL_EXECUTE,
             PYTHON_EXECUTE,
+            NETWORK_SCAN,
             REPORTS_GENERATE,
             AGENTS_RUN,
             INTEGRATIONS_MANAGE,
@@ -157,11 +159,12 @@ ROLE_CATALOG: dict[str, Role] = {
         "Digital forensics and incident response.",
     ),
     RoleName.RED_TEAM.value: Role(
-        RoleName.RED_TEAM,
+RoleName.RED_TEAM,
         {
             DASHBOARD_VIEW,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
+            NETWORK_SCAN,
             REPORTS_GENERATE,
         },
         "Offensive security assessments and controlled tooling.",
@@ -180,12 +183,13 @@ ROLE_CATALOG: dict[str, Role] = {
         "Defensive security operations.",
     ),
     RoleName.SECURITY_ENGINEER.value: Role(
-        RoleName.SECURITY_ENGINEER,
+RoleName.SECURITY_ENGINEER,
         {
             DASHBOARD_VIEW,
             ALERTS_READ,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
+            NETWORK_SCAN,
             INTEGRATIONS_MANAGE,
             REPORTS_GENERATE,
         },

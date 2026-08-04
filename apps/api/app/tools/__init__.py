@@ -20,16 +20,18 @@ from app.tools.mock_tools import (
     MockPythonTool,
     MockTerminalTool,
 )
+from app.tools.nmap_tool import NmapTool
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.tools.sandbox import MockSandbox, Sandbox
 
 __all__ = [
     "BaseTool",
-    "MockFilesystemTool",
+"MockFilesystemTool",
     "MockPythonTool",
     "MockSandbox",
     "MockTerminalTool",
+    "NmapTool",
     "Sandbox",
     "ToolCancelledError",
     "ToolExecutionError",

@@ -19,7 +19,6 @@ from app.api.deps import (
     get_current_user,
     get_tool_executor,
 )
-from app.kernel.integration import build_kernel_pipeline
 from app.models.user import User
 from app.schemas.conversation import (
     ConversationMessageRequest,

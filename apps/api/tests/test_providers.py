@@ -398,7 +398,7 @@ class TestGeminiProvider:
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
         output = provider.generate(_make_prompt("Investigate the beacon"))
         assert output.text == "Beacon detected on LAB-07."
-        assert output.model == "gemini-2.0-flash"
+        assert output.model == "gemini-3.5-flash"
         assert output.metadata["provider"] == "gemini"
         assert output.metadata["mode"] == "cloud"
 
@@ -410,7 +410,7 @@ class TestGeminiProvider:
         provider.generate(prompt)
         assert fake.models.generated_calls
         model, contents, _config = fake.models.generated_calls[0]
-        assert model == "gemini-2.0-flash"
+        assert model == "gemini-3.5-flash"
         assert isinstance(contents, list)
         assert contents
 
@@ -420,7 +420,7 @@ class TestGeminiProvider:
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
         provider.generate(_make_prompt("Analyze the log file"))
         model, contents, config = fake.models.generated_calls[0]
-        assert model == "gemini-2.0-flash"
+        assert model == "gemini-3.5-flash"
         # The system prompt is delivered via config.system_instruction, not
         # as a "system" role inside contents (as required by google-genai v2.x).
         assert config is not None
@@ -443,7 +443,7 @@ class TestGeminiProvider:
 
             def generate_content(
                 self,
-                model: str,
+                model: str,  # noqa: ARG002
                 contents: list[dict[str, object]],  # noqa: ARG002
                 config: dict[str, object] | None = None,  # noqa: ARG002
             ):
@@ -487,7 +487,7 @@ class TestGeminiProvider:
         provider.api_key = ""
         provider._client = None
         provider._client_factory = lambda: _FakeGeminiClient()
-        provider.model = "gemini-2.0-flash"
+        provider.model = "gemini-3.5-flash"
         health = provider.health()
         assert health.ok is False
         assert "not configured" in health.message.lower()
@@ -552,4 +552,5 @@ class _SettingsWithNoKey:
 
     ai_provider = "mock"
     gemini_api_key = ""
-    gemini_model = "gemini-2.0-flash"
+    gemini_model = "gemini-3.5-flash"
+

@@ -6,7 +6,7 @@ Router, execute the selected tool, and return the result so the pipeline can
 feed it back into the prompt builder.
 
 The coordinator is deliberately conservative: it recognises a small set of
-tool intents (filesystem, python, terminal) using deterministic keyword
+tool intents (filesystem, python, terminal, nmap) using deterministic keyword
 matching, and always resolves through the existing
 ``ToolExecutor``/``ToolRouter``/``ToolRegistry`` stack. Only the registered
 mock tools are ever executed — real command execution is out of scope until a
@@ -18,8 +18,9 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from app.tools.base import ToolResult
 from app.tools.executor import ToolExecutor
@@ -29,6 +30,7 @@ from app.tools.executor import ToolExecutor
 _DEFAULT_COMMAND = "whoami"
 _DEFAULT_CODE = "print('hello')"
 _DEFAULT_PATH = "/documents/report.txt"
+_DEFAULT_HOST = "127.0.0.1"
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,21 @@ def _extract_command(message: str) -> str:
     if match:
         return match.group(1).strip()
     return _DEFAULT_COMMAND
+
+
+def _extract_host(message: str) -> str:
+    """Best-effort extraction of a scan target (IP, hostname, or CIDR)."""
+    quoted = _extract_quoted(message, re.compile(r"""["']([^"']+)["']"""))
+    if quoted:
+        return quoted
+    match = re.search(
+        r"(\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?|"
+        r"[a-zA-Z0-9](?:[a-zA-Z0-9\-.]{0,252}[a-zA-Z0-9]))",
+        message,
+    )
+    if match:
+        return match.group(1).strip()
+    return _DEFAULT_HOST
 
 
 def _extract_code(message: str) -> str:
@@ -176,6 +193,21 @@ class ToolCoordinator:
         "run shell",
     )
 
+    #: Message patterns that trigger the nmap *scan* intent.
+    NMAP_MARKERS: tuple[str, ...] = (
+        "scan host",
+        "scan the host",
+        "port scan",
+        "nmap scan",
+        "run nmap",
+        "scan network",
+        "scan 10.",
+        "scan 192.168",
+        "scan 172.",
+        "scan the ip",
+        "scan the address",
+    )
+
     def __init__(self, executor: ToolExecutor) -> None:
         self._executor = executor
 
@@ -223,6 +255,13 @@ class ToolCoordinator:
                 input={"command": _extract_command(message)},
                 confidence=0.95,
                 reason="User asked to run a terminal or shell command.",
+            )
+        if any(marker in lower for marker in self.NMAP_MARKERS):
+            return ToolDecision(
+                tool_name="nmap",
+                input={"host": _extract_host(message)},
+                confidence=0.95,
+                reason="User asked to run a network or port scan.",
             )
         return None
 
@@ -284,4 +323,3 @@ class ToolCoordinator:
 
 
 __all__ = ["ToolCoordinator", "ToolDecision"]
-

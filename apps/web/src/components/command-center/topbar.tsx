@@ -1,7 +1,8 @@
 "use client";
 
 import { BellIcon, LogoIcon, MenuIcon, SearchIcon } from "@/components/command-center/icons";
-import { currentUser, kernelStatus } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { kernelStatus } from "@/lib/mock-data";
 
 const alertCount = 7;
 
@@ -14,6 +15,17 @@ export function Topbar({
   subtitle: string;
   onMenuClick: () => void;
 }) {
+  const { user } = useAuth();
+
+  const initials = user
+    ? (() => {
+        const parts = user.full_name.trim().split(/\s+/);
+        return parts.length >= 2
+          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+          : parts[0]?.slice(0, 2).toUpperCase() ?? "?";
+      })()
+    : "?";
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/[0.06] bg-zinc-950/60 px-4 backdrop-blur-xl sm:px-6">
       {/* Mobile brand + menu */}
@@ -76,12 +88,12 @@ export function Topbar({
 
         {/* Avatar */}
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/80 to-violet-600/80 text-[11px] font-bold text-white ring-1 ring-inset ring-white/20">
-          {currentUser.initials}
+          {initials}
         </div>
 
         <div className="hidden text-left leading-tight xl:block">
-          <p className="text-[13px] font-medium text-zinc-200">{currentUser.name}</p>
-          <p className="text-[10px] text-zinc-500">{currentUser.title}</p>
+          <p className="text-[13px] font-medium text-zinc-200">{user?.full_name ?? "User"}</p>
+          <p className="text-[10px] text-zinc-500">{user?.email ?? ""}</p>
         </div>
       </div>
     </header>

@@ -28,6 +28,7 @@ from app.tools.mock_tools import (
     MockPythonTool,
     MockTerminalTool,
 )
+from app.tools.nmap_tool import NmapTool
 from app.tools.registry import ToolRegistry
 from app.utils.seed import seed_admin_user
 
@@ -79,11 +80,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     document_repository = InMemoryDocumentRepository()
     app.state.rag_service = RagService(repository=document_repository)
 
-    # Tool Engine — standalone foundation (not yet connected to the Kernel).
+# Tool Engine — standalone foundation (not yet connected to the Kernel).
     tool_registry = ToolRegistry()
     tool_registry.register(MockFilesystemTool())
     tool_registry.register(MockTerminalTool())
     tool_registry.register(MockPythonTool())
+    tool_registry.register(NmapTool())
     app.state.tool_executor = ToolExecutor(registry=tool_registry)
 
     # Seed the default admin account for local development.

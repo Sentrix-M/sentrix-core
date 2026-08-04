@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from app.kernel.context_builder import ContextMessage, ConversationContext
 from app.kernel.integration import build_kernel_pipeline
 from app.kernel.pipeline import KernelPipeline

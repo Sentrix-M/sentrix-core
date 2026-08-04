@@ -1,18 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { VoiceIcon } from "@/components/command-center/icons";
 import { Sidebar } from "@/components/command-center/sidebar";
 import { Topbar } from "@/components/command-center/topbar";
+import { useAuth } from "@/lib/auth-context";
 
 /**
  * Command Center shell — shared chrome for dashboard + AI Copilot.
- * Includes the desktop sidebar, mobile drawer, topbar, and floating Voice Orb.
+ * Includes route guard (unauthenticated → /login), desktop sidebar,
+ * mobile drawer, topbar, and floating Voice Orb.
  */
 export default function CommandCenterLayout({ children }: { children: React.ReactNode }) {
+  const { status, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [voiceToast, setVoiceToast] = useState(false);
+
+  // Route guard: unauthenticated users are redirected to /login.
+  useEffect(() => {
+    if (status === "loading") return;
+    if (!isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [status, isAuthenticated, router]);
+
+  // Show nothing while checking auth — avoids a flash of the protected UI.
+  if (status === "loading" || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+        <div className="flex items-center gap-3 text-zinc-600">
+          <span className="flex h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+          <span className="text-sm">Sentrix is loading…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen bg-zinc-950 text-zinc-100">

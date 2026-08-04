@@ -13,7 +13,7 @@ is warmed with mock defaults:
 - ``AI_PROVIDER=mock``          → the kernel always composes MockProvider.
 - ``GEMINI_API_KEY=""``         → Gemini falls back to mock; embeddings use
                                   the deterministic mock embedder.
-- ``GEMINI_MODEL=gemini-2.5-flash`` → stable model identifier for tests.
+- ``GEMINI_MODEL=gemini-3.5-flash`` → stable model identifier for tests.
 
 Priority order in pydantic-settings is
 ``init args > process env > .env file``, so the process-env assignments below
@@ -30,7 +30,7 @@ import os
 # ---------------------------------------------------------------------------
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["GEMINI_API_KEY"] = ""
-os.environ["GEMINI_MODEL"] = "gemini-2.5-flash"
+os.environ["GEMINI_MODEL"] = "gemini-3.5-flash"
 
 # Warm the cached settings object now, at import time, before any test module
 # is collected, so every ``get_settings()`` call during the suite returns the
