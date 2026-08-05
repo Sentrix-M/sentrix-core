@@ -455,7 +455,7 @@ class ToolCoordinator:
         if any(marker in lower for marker in self.REPORT_MARKERS):
             return ToolDecision(
                 tool_name="report_generator",
-                input={"title": _DEFAULT_REPORT_TITLE},
+                input={"incident_title": _DEFAULT_REPORT_TITLE},
                 confidence=0.9,
                 reason="User asked to generate an incident report.",
             )

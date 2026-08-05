@@ -101,6 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # AI provider into a downloadable report (markdown/json/pdf).
     report_service = ReportService(
         executor=tool_executor,
+        provider=factory.create(),
         rag_service=app.state.rag_service,
     )
     app.state.report_service = report_service

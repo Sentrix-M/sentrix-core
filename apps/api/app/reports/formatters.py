@@ -188,14 +188,14 @@ def to_pdf(report: IncidentReport) -> bytes:
         rows: list[list[str]] = [["Asset", "Type", "Detail"]]
         for asset in report.affected_assets:
             rows.append([asset.value, asset.asset_type, asset.detail])
-        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, getSampleStyleSheet))
+        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, styles))
 
     if report.iocs:
         flow.append(Paragraph("Indicators of Compromise", heading_style))
         rows = [["Value", "Type"]]
         for ioc in report.iocs:
             rows.append([ioc.value, ioc.indicator_type])
-        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, getSampleStyleSheet))
+        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, styles))
 
     if report.mitre_mapping.get("techniques"):
         flow.append(Paragraph("MITRE ATT&CK Mapping", heading_style))
@@ -209,7 +209,7 @@ def to_pdf(report: IncidentReport) -> bytes:
                         str(technique.get("tactic", "")),
                     ]
                 )
-        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, getSampleStyleSheet))
+        flow.append(_table(rows, Paragraph, Table, TableStyle, colors, styles))
 
     if report.recommendations:
         flow.append(Paragraph("Recommendations", heading_style))
@@ -237,22 +237,21 @@ def _table(
     table_cls: Any,
     table_style_cls: Any,
     colors_mod: Any,
-    styles_mod: Any,
+    styles: Any,
 ) -> Any:
     """Build a styled reportlab table from string rows.
 
-    The reportlab classes are passed in so this helper stays import-free and
-    trivially testable without a live reportlab import at module scope.
+    The reportlab classes and the stylesheet are passed in so this helper
+    stays import-free and trivially testable without a live reportlab import
+    at module scope.
     """
-    styles = styles_mod.getSampleStyleSheet()
-    header_style = styles["TableHeader"]
     body_style = styles["BodyText"]
     data = [
         [
-            paragraph_cls(_escape(cell), header_style if i == 0 else body_style)
+            paragraph_cls(_escape(cell), body_style)
             for cell in row
         ]
-        for i, row in enumerate(rows)
+        for row in rows
     ]
     table = table_cls(data)
     table.setStyle(
