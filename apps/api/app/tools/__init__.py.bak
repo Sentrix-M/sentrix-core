@@ -22,7 +22,6 @@ from app.tools.mock_tools import (
 )
 from app.tools.nmap_tool import NmapTool
 from app.tools.registry import ToolRegistry
-from app.tools.report_generator_tool import ReportGeneratorTool
 from app.tools.router import ToolRouter
 from app.tools.sandbox import MockSandbox, Sandbox
 from app.tools.shodan_tool import ShodanTool
@@ -36,7 +35,6 @@ __all__ = [
     "MockSandbox",
     "MockTerminalTool",
     "NmapTool",
-    "ReportGeneratorTool",
     "Sandbox",
     "ShodanTool",
     "VirusTotalTool",
@@ -53,3 +51,4 @@ __all__ = [
     "ToolStatus",
     "ToolTimeoutError",
 ]
+</content>

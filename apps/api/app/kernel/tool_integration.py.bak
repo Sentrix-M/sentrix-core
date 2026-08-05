@@ -6,7 +6,7 @@ Router, execute the selected tool, and return the result so the pipeline can
 feed it back into the prompt builder.
 
 The coordinator is deliberately conservative: it recognises a small set of
-tool intents (filesystem, python, terminal, nmap, virustotal, shodan, wazuh)
+tool intents (filesystem, python, terminal, nmap, virustotal, shodan, euzuh)
 using deterministic keyword matching, and always resolves through the existing
 ``ToolExecutor``/``ToolRouter``/``ToolRegistry`` stack. Only the registered
 tools are ever executed.
@@ -35,7 +35,6 @@ _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_VT_QUERY = "44d88612fea8a8f36de82e1278abb02f"
 _DEFAULT_SHODAN_QUERY = "1.1.1.1"
 _DEFAULT_WAZUH_OPERATION = "recent_alerts"
-_DEFAULT_REPORT_TITLE = "Security Incident"
 
 
 @dataclass(frozen=True)
@@ -185,13 +184,6 @@ def _extract_wazuh_operation(message: str) -> str:
     Falls back to ``recent_alerts`` when no specific operation is named.
     """
     lower = (message or "").lower()
-
-    # "recent alerts" (and variants) should map to recent_alerts before the
-    # generic "alert" branch, so phrases like "show recent alerts" resolve to
-    # the list operation rather than a single-alert lookup.
-    if any(w in lower for w in ("recent alerts", "recent_alert", "latest alerts")):
-        return "recent_alerts"
-
     if "rule" in lower and any(w in lower for w in ("wazuh", "alert", "siem")):
         return "rule"
     if any(w in lower for w in ("agent", "agent status", "agents")):
@@ -350,20 +342,6 @@ class ToolCoordinator:
         "wazuh alert",
     )
 
-    #: Message patterns that trigger the incident-report *generation* intent.
-    REPORT_MARKERS: tuple[str, ...] = (
-        "generate an incident report",
-        "generate incident report",
-        "create incident report",
-        "incident report",
-        "write a report",
-        "open a case report",
-        "generate a report",
-        "create a report",
-        "produce a report",
-        "make a report",
-    )
-
     def __init__(
         self,
         executor: ToolExecutor,
@@ -451,13 +429,6 @@ class ToolCoordinator:
                 input={"operation": _extract_wazuh_operation(message)},
                 confidence=0.9,
                 reason="User asked to query Wazuh security alerts.",
-            )
-        if any(marker in lower for marker in self.REPORT_MARKERS):
-            return ToolDecision(
-                tool_name="report_generator",
-                input={"title": _DEFAULT_REPORT_TITLE},
-                confidence=0.9,
-                reason="User asked to generate an incident report.",
             )
         return None
 

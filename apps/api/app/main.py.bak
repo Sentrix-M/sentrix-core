@@ -19,7 +19,6 @@ from app.config.settings import get_settings
 from app.providers.factory import ProviderFactory
 from app.rag.repository import InMemoryDocumentRepository
 from app.rag.service import RagService
-from app.reports.service import ReportService
 from app.repositories.refresh_token_repository import InMemoryRefreshTokenRepository
 from app.repositories.user_repository import InMemoryUserRepository
 from app.services.conversation_service import ConversationService
@@ -31,7 +30,6 @@ from app.tools.mock_tools import (
 )
 from app.tools.nmap_tool import NmapTool
 from app.tools.registry import ToolRegistry
-from app.tools.report_generator_tool import ReportGeneratorTool
 from app.tools.shodan_tool import ShodanTool
 from app.tools.virustotal_tool import VirusTotalTool
 from app.tools.wazuh_tool import WazuhTool
@@ -94,19 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_registry.register(VirusTotalTool())
     tool_registry.register(ShodanTool())
     tool_registry.register(WazuhTool())
-    tool_executor = ToolExecutor(registry=tool_registry)
-    app.state.tool_executor = tool_executor
-
-    # Incident Report Generator — combines tool results, MITRE, RAG, and the
-    # AI provider into a downloadable report (markdown/json/pdf).
-    report_service = ReportService(
-        executor=tool_executor,
-        rag_service=app.state.rag_service,
-    )
-    app.state.report_service = report_service
-    tool_registry.register(
-        ReportGeneratorTool(service=report_service, format_name="markdown")
-    )
+    app.state.tool_executor = ToolExecutor(registry=tool_registry)
 
     # Seed the default admin account for local development.
     await seed_admin_user(user_repository, settings)
