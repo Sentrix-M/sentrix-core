@@ -17,6 +17,7 @@ from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.config.settings import get_settings
 from app.db.db import MemoryDatabase
+from app.kernel.integration import build_kernel_pipeline
 from app.memory.repository import SQLiteMemoryRepository
 from app.memory.service import MemoryService
 from app.providers.factory import ProviderFactory
@@ -89,18 +90,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_repository = SQLiteMemoryRepository(db=memory_db)
     app.state.memory_service = MemoryService(repository=memory_repository)
 
-    # Conversation engine — stateless and mock-backed for now. When long-term
-    # memory is available, each turn is recorded and recent context can be
-    # retrieved (best-effort).
-    app.state.conversation_service = ConversationService(
-        memory_service=app.state.memory_service,
-    )
-
-    # RAG document ingestion engine — in-memory for development.
+# RAG document ingestion engine — in-memory for development.
     document_repository = InMemoryDocumentRepository()
     app.state.rag_service = RagService(repository=document_repository)
 
-    # Tool Engine — standalone foundation (not yet connected to the Kernel).
+    # Tool Engine — standalone foundation (already wired into the Kernel for
+    # the conversation pipeline below).
     tool_registry = ToolRegistry()
     tool_registry.register(MockFilesystemTool())
     tool_registry.register(MockTerminalTool())
@@ -111,6 +106,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_registry.register(WazuhTool())
     tool_executor = ToolExecutor(registry=tool_registry)
     app.state.tool_executor = tool_executor
+
+    # Conversation engine — kernel-backed so tool results and provider output
+    # reach the client. When the pipeline is unavailable, the service falls
+    # back to a deterministic mock reply (backward compatible).
+    app.state.conversation_service = ConversationService(
+        memory_service=app.state.memory_service,
+        pipeline=build_kernel_pipeline(
+            tool_executor=tool_executor,
+            memory_service=app.state.memory_service,
+        ),
+    )
 
 # Incident Report Generator — combines tool results, MITRE, RAG, and the
     # AI provider into a downloadable report (markdown/json/pdf). Long-term

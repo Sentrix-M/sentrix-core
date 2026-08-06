@@ -73,10 +73,11 @@ def test_send_message_includes_mock_metadata(client: TestClient, admin_token: st
     body = response.json()
     metadata = body["metadata"]
     assert metadata["model"] == "sentrix-mock-0.1"
-    assert metadata["reasoning"] is None
+    # The REST /message path is now kernel-backed, so the mock provider
+    # surfaces its reasoning trace and the response reflects the pipeline.
+    assert metadata["reasoning"]
     assert metadata["evidence"] is None
     assert metadata["sources"] is None
-    assert metadata["tools_used"] is None
     assert metadata["execution_time_ms"] is not None
 
 

@@ -125,7 +125,8 @@ class ReportService:
         self,
         *,
         incident_title: str,
-        tool_inputs: list[tuple[str, dict[str, Any]]],
+        tool_inputs: list[tuple[str, dict[str, Any]]] | None = None,
+        tool_results: list[ToolResult] | None = None,
         user_permissions: set[str] | None = None,
         rag_query: str | None = None,
         analyst_notes: list[str] | None = None,
@@ -134,8 +135,16 @@ class ReportService:
     ) -> IncidentReport:
         """Collect tool results, enrich with RAG, and build an :class:`IncidentReport`.
 
+        When ``tool_results`` is provided, those pre-collected results are used
+        directly (e.g. results already gathered by the Planner/Workflow) and no
+        additional tools are executed. Otherwise ``tool_inputs`` are executed
+        through the tool executor.
+
         :param incident_title: Short incident title.
         :param tool_inputs: List of ``(tool_name, input_dict)`` pairs to run.
+            Ignored when ``tool_results`` is provided.
+        :param tool_results: Optional pre-collected :class:`ToolResult` list.
+            When provided, no tools are executed and these results are used.
         :param user_permissions: Optional permission set for tool execution.
         :param rag_query: Optional RAG query. When omitted, the engine builds
             one automatically from the tool evidence.
@@ -144,11 +153,14 @@ class ReportService:
         :param timeout: Per-tool execution timeout.
         :returns: A populated :class:`IncidentReport`.
         """
-        results = await self.collect_results(
-            tool_inputs=tool_inputs,
-            user_permissions=user_permissions,
-            timeout=timeout,
-        )
+        if tool_results is not None:
+            results = tool_results
+        else:
+            results = await self.collect_results(
+                tool_inputs=tool_inputs or [],
+                user_permissions=user_permissions,
+                timeout=timeout,
+            )
 
         rag_context = None
         if self._rag_service is not None:
