@@ -15,6 +15,7 @@ from app.config.settings import Settings, get_settings
 from app.core.exceptions import (
     SentrixError,
 )
+from app.memory.service import MemoryService
 from app.models.user import User
 from app.rag.service import RagService
 from app.repositories.refresh_token_repository import (
@@ -74,6 +75,17 @@ def get_rag_service(request: Request) -> RagService:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RAG service is not initialized.",
+        )
+    return service
+
+
+def get_memory_service(request: Request) -> MemoryService:
+    """Return the shared Long-Term Memory service stored on application state."""
+    service = getattr(request.app.state, "memory_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Memory service is not initialized.",
         )
     return service
 

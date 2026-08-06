@@ -21,6 +21,25 @@ from app.memory.models import (
     ProjectMemory,
     WorkingMemory,
 )
+from app.memory.repository import (
+    InMemoryMemoryRepository,
+    MemoryRepository,
+    SQLiteMemoryRepository,
+)
+from app.memory.retriever import (
+    MemoryRetriever,
+    RecallResponse,
+    RecallResult,
+)
+from app.memory.schemas import (
+    ConversationRecord,
+    FindingRecord,
+    InvestigationRecord,
+    PreferenceRecord,
+    ReportRecord,
+    ToolExecutionRecord,
+)
+from app.memory.service import MemoryService
 from app.memory.store import (
     InMemoryConversationStore,
     InMemoryProjectStore,
@@ -29,13 +48,26 @@ from app.memory.strategy import DefaultMemoryStrategy
 
 __all__ = [
     "ConversationMemory",
+    "ConversationRecord",
     "DefaultMemoryStrategy",
+    "FindingRecord",
     "InMemoryConversationStore",
+    "InMemoryMemoryRepository",
     "InMemoryProjectStore",
+    "InvestigationRecord",
     "LongTermMemory",
     "MemoryContext",
     "MemoryItem",
     "MemoryManager",
+    "MemoryRepository",
+    "MemoryRetriever",
+    "MemoryService",
+    "PreferenceRecord",
     "ProjectMemory",
+    "RecallResponse",
+    "RecallResult",
+    "ReportRecord",
+    "SQLiteMemoryRepository",
+    "ToolExecutionRecord",
     "WorkingMemory",
 ]

@@ -111,6 +111,18 @@ class Settings(BaseSettings):
     admin_full_name: str = "Sentrix Admin"
     admin_org_id: str = "00000000-0000-0000-0000-000000000000"
 
+    # Long-Term Memory backend
+    # `MEMORY_BACKEND` selects the storage backend for the Long-Term Memory
+    # layer. Supported values:
+    #   - "memory" (default) — in-memory repository (offline-safe, no disk).
+    #   - "sqlite" — persists to a local SQLite file (stdlib sqlite3 only).
+    # A future "postgres" value can be added without changing public APIs.
+    memory_backend: Literal["memory", "sqlite"] = "memory"
+
+    # `MEMORY_DB_PATH` is the SQLite file used when `memory_backend="sqlite"`.
+    # Relative paths resolve from the API package root (`apps/api`).
+    memory_db_path: str = "data/sentrix_memory.db"
+
 
 @lru_cache
 def get_settings() -> Settings:

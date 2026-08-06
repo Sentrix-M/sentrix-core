@@ -16,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.config.settings import get_settings
+from app.db.db import MemoryDatabase
+from app.memory.repository import SQLiteMemoryRepository
+from app.memory.service import MemoryService
 from app.providers.factory import ProviderFactory
 from app.rag.repository import InMemoryDocumentRepository
 from app.rag.service import RagService
@@ -80,6 +83,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Conversation engine — stateless and mock-backed for now.
     app.state.conversation_service = ConversationService()
+
+# Long-Term Memory — SQLite when configured, otherwise in-memory.
+    if settings.memory_backend == "sqlite":
+        memory_db = MemoryDatabase(path=settings.memory_db_path)
+    else:
+        memory_db = MemoryDatabase(path=":memory:")
+    memory_repository = SQLiteMemoryRepository(db=memory_db)
+    app.state.memory_service = MemoryService(repository=memory_repository)
 
     # RAG document ingestion engine — in-memory for development.
     document_repository = InMemoryDocumentRepository()
