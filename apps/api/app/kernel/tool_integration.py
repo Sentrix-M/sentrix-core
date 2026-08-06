@@ -23,6 +23,9 @@ from typing import Any
 
 from app.mitre.integration import enrich_tool_result
 from app.mitre.mapper import MitreMapper
+from app.planner.engine import detect_workflow
+from app.planner.models import WorkflowPlan, WorkflowResult
+from app.planner.orchestrator import WorkflowOrchestrator
 from app.tools.base import ToolResult
 from app.tools.executor import ToolExecutor
 
@@ -522,6 +525,92 @@ class ToolCoordinator:
                 result, mapper=self.mitre_mapper
             )
         return decision, result
+
+    # ------------------------------------------------------------------
+    # Multi-tool (Phase 14 workflow) integration
+    # ------------------------------------------------------------------
+
+    def plan_and_execute(
+        self,
+        message: str,
+        *,
+        user_permissions: set[str] | None = None,
+        timeout: float | None = None,
+    ) -> WorkflowResult | None:
+        """Detect and execute a multi-tool workflow, falling back gracefully.
+
+        This is the Phase 14 entry point. It builds a :class:`WorkflowPlan`
+        from ``message`` via the planner engine. When the plan contains more
+        than one tool, the steps are executed through the
+        :class:`WorkflowOrchestrator` and the aggregated
+        :class:`WorkflowResult` is returned.
+
+        When the plan has zero or one tool(s), the method falls back to the
+        existing single-tool :meth:`detect_and_execute` path so behavior is
+        identical to pre-Phase-14. A single-tool workflow is wrapped into a
+        :class:`WorkflowResult` for a uniform return shape; ``None`` is
+        returned only when no tool intent is detected at all.
+
+        :param message: The user's request.
+        :param user_permissions: Optional permission set for tool execution.
+        :param timeout: Optional per-tool execution timeout.
+        :returns: A :class:`WorkflowResult`, or ``None`` when no workflow
+            can be derived from ``message``.
+        """
+        plan = detect_workflow(message)
+
+        # Reinforce the ordering guarantee: the coordinator's single-tool
+        # detection is the source of truth for 0-1 tool messages so that
+        # legacy behavior (incl. filesystem/python/terminal) is preserved.
+        if len(plan.steps) <= 1:
+            pair = self.detect_and_execute(message, user_permissions=user_permissions)
+            if pair is None:
+                return None
+            decision, result = pair
+            return WorkflowResult(
+                plan=_single_tool_plan(message, decision),
+                results=[result],
+            )
+
+        # Multi-tool workflow: run the orchestrator (MITRE-enriches each
+        # successful result and aggregates streaming progress).
+        orchestrator = WorkflowOrchestrator(
+            executor=self._executor,
+            mitre_mapper=self.mitre_mapper,
+        )
+        return _run_async_from_sync(
+            lambda: orchestrator.run(
+                plan,
+                user_permissions=user_permissions,
+                timeout=timeout,
+            )
+        )
+
+
+def _single_tool_plan(
+    message: str,
+    decision: ToolDecision,
+) -> WorkflowPlan:
+    """Build a single-step :class:`WorkflowPlan` for a legacy decision."""
+    step = _planned_step(decision)
+    return WorkflowPlan(
+        message=message,
+        steps=[step],
+        intent=decision.tool_name,
+        generate_report=False,
+        incident_title="",
+    )
+
+
+def _planned_step(decision: ToolDecision) -> Any:
+    """Wrap a :class:`ToolDecision` as a :class:`PlannedStep`."""
+    from app.planner.models import PlannedStep
+
+    return PlannedStep(
+        tool_name=decision.tool_name,
+        input_data=decision.input,
+        reason=decision.reason,
+    )
 
 
 __all__ = ["ToolCoordinator", "ToolDecision"]

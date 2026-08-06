@@ -160,20 +160,22 @@ class KernelPipeline:
             message=message,
         )
 
-        # Tool integration: detect intent, execute mock tools, and collect
-        # the results so they can be fed into the prompt builder.
+        # Tool integration: detect intent, execute tools (single or multi-tool
+        # workflow), and collect the results so they can be fed into the
+        # prompt builder. ``plan_and_execute`` falls back to the legacy
+        # single-tool path for 0-1 tool messages (backward compatible).
         tool_results: list[dict[str, object]] = []
         tools_used: list[str] = []
         if self._tool_coordinator is not None:
-            pair = self._tool_coordinator.detect_and_execute(
+            workflow = self._tool_coordinator.plan_and_execute(
                 message,
                 user_permissions=user_permissions,
             )
-            if pair is not None:
-                decision, result = pair
-                tool_results.append(_tool_result_to_dict(result))
-                if result.success:
-                    tools_used.append(decision.tool_name)
+            if workflow is not None:
+                for result in workflow.results:
+                    tool_results.append(_tool_result_to_dict(result))
+                    if result.success:
+                        tools_used.append(result.tool)
 
         route = self._route(context, capabilities, preferred_provider)
         prompt = self._build_prompt(context, instruction, tool_results)
