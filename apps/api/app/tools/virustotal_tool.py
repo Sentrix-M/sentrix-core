@@ -152,14 +152,23 @@ def detect_indicator_type(query: str) -> str:
     return "hash"
 
 
+def _url_path(value: str) -> str:
+    """Return the URL-encoded path segment for ``value`` as a string.
+
+    ``httpx.URL(...).raw_path`` is ``bytes``; decode it so it is never
+    interpolated into a URL as its ``b'...'`` repr.
+    """
+    return httpx.URL(value).raw_path.decode()
+
+
 def _build_url(base_url: str, indicator_type: str, query: str) -> str:
     """Build the VirusTotal API URL for a lookup."""
     path = _INDICATOR_PATH.get(indicator_type, "files")
     # URL lookups need the URL-encoded value; other types pass through.
     if indicator_type == "url":
-        encoded = httpx.URL(query).raw_path
+        encoded = _url_path(query)
         return f"{base_url.rstrip('/')}/{path}/{encoded}"
-    return f"{base_url.rstrip('/')}/{path}/{httpx.URL(query).raw_path}"
+    return f"{base_url.rstrip('/')}/{path}/{_url_path(query)}"
 
 
 def _extract_analysis_stats(data: dict[str, Any]) -> dict[str, Any]:
@@ -195,7 +204,7 @@ def _extract_tags(data: dict[str, Any]) -> list[str]:
 def _extract_permalink(indicator_type: str, query: str) -> str:
     """Build the VirusTotal web permalink for an indicator."""
     if indicator_type == "url":
-        return f"https://www.virustotal.com/gui/url/{httpx.URL(query).raw_path}"
+        return f"https://www.virustotal.com/gui/url/{_url_path(query)}"
     return f"https://www.virustotal.com/gui/{indicator_type}/{query}"
 
 

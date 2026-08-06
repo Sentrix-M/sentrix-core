@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.memory.manager import MemoryManager
+    from app.memory.service import MemoryService
     from app.rag.retriever import SemanticRetriever
     from app.tools.executor import ToolExecutor
 
@@ -56,6 +57,7 @@ def build_kernel_pipeline(
     retriever: SemanticRetriever | None = None,
     rag_top_k: int = DEFAULT_TOP_K,
     tool_executor: ToolExecutor | None = None,
+    memory_service: MemoryService | None = None,
 ) -> KernelPipeline:
     """Compose a :class:`KernelPipeline` wired with a provider from ``factory``.
 
@@ -82,6 +84,8 @@ def build_kernel_pipeline(
         :class:`ToolCoordinator`.  When provided, the pipeline detects tool
         intents from user messages and feeds mock tool results into the
         prompt so the provider can explain them naturally.
+    :param memory_service: Optional :class:`MemoryService` used to inject
+        recent conversation context into the prompt on a best-effort basis.
     """
     provider_factory = factory or ProviderFactory()
     provider_name = provider or provider_factory._resolve_default()
@@ -126,7 +130,10 @@ def build_kernel_pipeline(
     if tool_executor is not None:
         from app.kernel.tool_integration import ToolCoordinator
 
-        tool_coordinator = ToolCoordinator(tool_executor)
+        tool_coordinator = ToolCoordinator(
+            tool_executor,
+            memory_service=memory_service,
+        )
 
     return KernelPipeline(
         context_builder=context_builder,
@@ -136,6 +143,7 @@ def build_kernel_pipeline(
         registry=registry,
         system_prompt=system_prompt,
         tool_coordinator=tool_coordinator,
+        memory_service=memory_service,
     )
 
 

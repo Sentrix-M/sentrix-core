@@ -19,7 +19,7 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.mitre.integration import enrich_tool_result
 from app.mitre.mapper import MitreMapper
@@ -28,6 +28,9 @@ from app.planner.models import WorkflowPlan, WorkflowResult
 from app.planner.orchestrator import WorkflowOrchestrator
 from app.tools.base import ToolResult
 from app.tools.executor import ToolExecutor
+
+if TYPE_CHECKING:
+    from app.memory.service import MemoryService
 
 #: Default values used when a user message implies a tool but does not
 #: contain a concrete command/code/path to extract.
@@ -259,6 +262,9 @@ class ToolCoordinator:
     :param mitre_mapper: Optional :class:`MitreMapper` used to enrich
         successful tool results with MITRE ATT&CK mappings. When omitted, a
         default :class:`MitreMapper` is created lazily.
+    :param memory_service: Optional :class:`MemoryService` passed through to
+        the :class:`WorkflowOrchestrator` so multi-tool executions and
+        investigations are recorded to long-term memory (best-effort).
     """
 
     #: Message patterns that trigger the filesystem *list* intent.
@@ -371,9 +377,11 @@ class ToolCoordinator:
         self,
         executor: ToolExecutor,
         mitre_mapper: MitreMapper | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._executor = executor
         self._mitre_mapper = mitre_mapper
+        self._memory_service = memory_service
 
     @property
     def executor(self) -> ToolExecutor:
@@ -386,6 +394,11 @@ class ToolCoordinator:
         if self._mitre_mapper is None:
             self._mitre_mapper = MitreMapper()
         return self._mitre_mapper
+
+    @property
+    def memory_service(self) -> MemoryService | None:
+        """The optional memory service ("None" when not wired)."""
+        return self._memory_service
 
     # ------------------------------------------------------------------
     # Detection
@@ -577,6 +590,7 @@ class ToolCoordinator:
         orchestrator = WorkflowOrchestrator(
             executor=self._executor,
             mitre_mapper=self.mitre_mapper,
+            memory_service=self._memory_service,
         )
         return _run_async_from_sync(
             lambda: orchestrator.run(

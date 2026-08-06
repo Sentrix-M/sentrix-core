@@ -15,12 +15,18 @@ using the existing :class:`~app.tools.executor.ToolExecutor`. It:
 
 No new execution primitive is introduced — this is a thin orchestration
 loop over the existing stack.
+
+When an optional :class:`~app.memory.service.MemoryService` is provided
+(Phase 15B), each tool execution and each completed investigation is recorded
+to long-term memory (best-effort). When omitted, the orchestrator behaves
+exactly as before (backward compatible).
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from app.mitre.integration import enrich_tool_result
@@ -31,6 +37,7 @@ from app.tools.base import ToolResult
 from app.tools.executor import ToolExecutor
 
 if TYPE_CHECKING:
+    from app.memory.service import MemoryService
     from app.reports.service import ReportService
 
 logger = logging.getLogger(__name__)
@@ -49,6 +56,9 @@ class WorkflowOrchestrator:
         even if ``generate_report`` is set.
     :param mitre_mapper: Optional :class:`MitreMapper`. Defaults to a fresh
         instance so MITRE enrichment is self-contained.
+    :param memory_service: Optional :class:`MemoryService` used to record tool
+        executions and investigations. When omitted (default), no persistence
+        occurs (backward compatible).
     """
 
     def __init__(
@@ -57,10 +67,12 @@ class WorkflowOrchestrator:
         executor: ToolExecutor,
         report_service: ReportService | None = None,
         mitre_mapper: MitreMapper | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._executor = executor
         self._report_service = report_service
         self._mitre_mapper = mitre_mapper
+        self._memory_service = memory_service
 
     @property
     def executor(self) -> ToolExecutor:
@@ -71,6 +83,11 @@ class WorkflowOrchestrator:
     def report_service(self) -> ReportService | None:
         """The optional report service."""
         return self._report_service
+
+    @property
+    def memory_service(self) -> MemoryService | None:
+        """The optional memory service ("None" when not wired)."""
+        return self._memory_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -107,12 +124,15 @@ class WorkflowOrchestrator:
                     result, mapper=self._mitre_mapper
                 )
             results.append(result)
+            self._record_tool_execution(step, result)
             if on_progress is not None:
                 on_progress(step, result.success)
 
         report: dict[str, Any] | None = None
         if plan.generate_report and self._report_service is not None:
             report = await self._generate_report(plan, results)
+
+        self._record_investigation(plan, results, report)
 
         return WorkflowResult(plan=plan, results=results, report=report)
 
@@ -148,6 +168,59 @@ class WorkflowOrchestrator:
                 "incident_title": incident_title,
             }
         return report.to_dict()
+
+    # ------------------------------------------------------------------
+    # Memory integration (Phase 15B)
+    # ------------------------------------------------------------------
+
+    def _record_tool_execution(
+        self,
+        step: PlannedStep,
+        result: ToolResult,
+    ) -> None:
+        """Record a single tool execution to memory (best-effort)."""
+        if self._memory_service is None:
+            return
+        with suppress(Exception):
+            self._memory_service.record_tool_execution(
+                tool_name=step.tool_name,
+                success=result.success,
+                input=step.input_data,
+                output=result.output if isinstance(result.output, dict) else None,
+                error=result.error or "",
+            )
+
+    def _record_investigation(
+        self,
+        plan: WorkflowPlan,
+        results: list[ToolResult],
+        report: dict[str, Any] | None,
+    ) -> None:
+        """Record a completed investigation to memory (best-effort)."""
+        if self._memory_service is None:
+            return
+        title = plan.incident_title or "Security Investigation"
+        summary = report.get("executive_summary", "") if isinstance(report, dict) else ""
+        findings = [
+            {
+                "tool": result.tool,
+                "success": result.success,
+                "output": result.output,
+                "error": result.error,
+            }
+            for result in results
+        ]
+        with suppress(Exception):
+            self._memory_service.record_investigation(
+                title=title,
+                target=",".join(
+                    str(step.input_data.get("host", ""))
+                    for step in plan.steps
+                    if step.input_data.get("host")
+                ),
+                summary=summary,
+                findings=findings,
+            )
 
     def run_sync(
         self,

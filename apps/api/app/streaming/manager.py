@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 from app.kernel.integration import build_kernel_pipeline
 from app.kernel.pipeline import KernelPipeline
@@ -26,6 +27,9 @@ from app.streaming.events import (
 )
 from app.streaming.formatter import format_event, heartbeat
 from app.tools.executor import ToolExecutor
+
+if TYPE_CHECKING:
+    from app.memory.service import MemoryService
 
 #: Default inter-token delay (seconds) used to simulate a live provider stream.
 DEFAULT_TOKEN_DELAY_SECONDS = 0.015
@@ -50,6 +54,7 @@ class StreamingManager:
         pipeline: KernelPipeline | None = None,
         token_delay_seconds: float = DEFAULT_TOKEN_DELAY_SECONDS,
         tool_executor: ToolExecutor | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         """Create the manager.
 
@@ -60,9 +65,12 @@ class StreamingManager:
         :param tool_executor: Optional :class:`ToolExecutor` used to build a
             tool-aware kernel pipeline so the stream can execute mock tools
             and surface ``tools_used`` in the ``completed`` event.
+        :param memory_service: Optional :class:`MemoryService` passed through
+            to the kernel pipeline for long-term memory context (best-effort).
         """
         self._pipeline = pipeline or build_kernel_pipeline(
             tool_executor=tool_executor,
+            memory_service=memory_service,
         )
         self._token_delay_seconds = token_delay_seconds
 

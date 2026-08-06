@@ -9,12 +9,18 @@ the formatters.
 The service returns formatted output (strings/bytes) rather than writing
 files, so the caller (API or frontend) decides whether to stream or persist
 the result. An optional ``output_path`` is supported for future CLI usage.
+
+When an optional :class:`~app.memory.service.MemoryService` is provided
+(Phase 15B), every generated report is persisted to long-term memory and the
+user's preferred report format is honoured automatically (best-effort). When
+omitted, the service behaves exactly as before (backward compatible).
 """
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.providers.base import BaseProvider
 from app.rag.service import RagService
@@ -26,6 +32,9 @@ from app.reports.models import (
 )
 from app.tools.base import ToolResult
 from app.tools.executor import ToolExecutor
+
+if TYPE_CHECKING:
+    from app.memory.service import MemoryService
 
 #: Default tool execution timeout used when collecting tool results.
 DEFAULT_TOOL_TIMEOUT = 30.0
@@ -44,6 +53,9 @@ class ReportService:
     :param provider: Optional :class:`BaseProvider` for the executive summary.
         Ignored when ``engine`` is provided explicitly.
     :param rag_service: Optional :class:`RagService` for knowledge context.
+    :param memory_service: Optional :class:`MemoryService` used to persist
+        generated reports and read the user's report-format preference. When
+        omitted (default), no persistence occurs (backward compatible).
     """
 
     def __init__(
@@ -53,10 +65,12 @@ class ReportService:
         engine: ReportEngine | None = None,
         provider: BaseProvider | None = None,
         rag_service: RagService | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._executor = executor
         self._engine = engine or ReportEngine(provider=provider)
         self._rag_service = rag_service
+        self._memory_service = memory_service
 
     @property
     def executor(self) -> ToolExecutor:
@@ -72,6 +86,11 @@ class ReportService:
     def rag_service(self) -> RagService | None:
         """The optional RAG service."""
         return self._rag_service
+
+    @property
+    def memory_service(self) -> MemoryService | None:
+        """The optional memory service ("None" when not wired)."""
+        return self._memory_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -139,7 +158,7 @@ class ReportService:
             except Exception:  # noqa: BLE001 - RAG is best-effort
                 rag_context = None
 
-        return self._engine.generate(
+        report = self._engine.generate(
             incident_title=incident_title,
             tool_results=results,
             rag_context=rag_context,
@@ -147,6 +166,33 @@ class ReportService:
             analyst_notes=analyst_notes,
             recommendations=recommendations,
         )
+
+        self._record_report(report)
+
+        return report
+
+    def resolve_report_format(
+        self,
+        *,
+        user_id: str,
+        default: ReportFormat = ReportFormat.MARKDOWN,
+    ) -> ReportFormat:
+        """Resolve the preferred report format for a user (Phase 15B).
+
+        Consults the memory-backed ``report_format`` preference when a memory
+        service is wired; otherwise returns ``default``. Invalid stored
+        values fall back to ``default``.
+        """
+        if self._memory_service is None:
+            return default
+        try:
+            preferred = self._memory_service.get_report_format_preference(
+                user_id=user_id,
+                default=default.value,
+            )
+            return ReportFormat(preferred)
+        except (Exception, ValueError):  # noqa: BLE001 - preference is best-effort
+            return default
 
     def export(
         self,
@@ -198,6 +244,23 @@ class ReportService:
             result = self.export(report, fmt, output_path=str(output_path))
             paths[fmt.value] = str(result)
         return paths
+
+    # ------------------------------------------------------------------
+    # Memory integration (Phase 15B)
+    # ------------------------------------------------------------------
+
+    def _record_report(self, report: IncidentReport) -> None:
+        """Persist a generated report to memory (best-effort)."""
+        if self._memory_service is None:
+            return
+        with suppress(Exception):
+            self._memory_service.record_report(
+                title=report.incident_title,
+                report_format=report.report_format.value,
+                severity=report.severity.value,
+                summary=report.executive_summary,
+                payload=report.to_dict(),
+            )
 
 
 def _safe_filename(title: str) -> str:

@@ -230,6 +230,56 @@ class MemoryService:
         )
 
     # ------------------------------------------------------------------
+    # Convenience preference helpers (Phase 15B)
+    # ------------------------------------------------------------------
+
+    def get_preference_value(
+        self,
+        *,
+        user_key: str,
+        user_id: str,
+        org_id: str | None = None,
+        default: str = "",
+    ) -> str:
+        """Return a preference value or ``default`` when unset.
+
+        Additive convenience wrapper over :meth:`get_preference` so callers
+        (reports, exports) can read a preference without null-handling.
+        """
+        record = self.get_preference(
+            user_key=user_key,
+            user_id=user_id,
+            org_id=org_id,
+        )
+        return record.value if record is not None else default
+
+    def get_report_format_preference(
+        self,
+        *,
+        user_id: str,
+        default: str = "markdown",
+    ) -> str:
+        """Return the user's preferred report format (``report_format``)."""
+        return self.get_preference_value(
+            user_key="report_format",
+            user_id=user_id,
+            default=default,
+        )
+
+    def get_output_style_preference(
+        self,
+        *,
+        user_id: str,
+        default: str = "concise",
+    ) -> str:
+        """Return the user's preferred output style (``output_style``)."""
+        return self.get_preference_value(
+            user_key="output_style",
+            user_id=user_id,
+            default=default,
+        )
+
+    # ------------------------------------------------------------------
     # Tool execution history
     # ------------------------------------------------------------------
 

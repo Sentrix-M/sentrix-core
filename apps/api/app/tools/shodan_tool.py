@@ -136,14 +136,23 @@ def detect_indicator_type(query: str) -> str:
     return "hostname"
 
 
+def _url_path(value: str) -> str:
+    """Return the URL-encoded path segment for ``value`` as a string.
+
+    ``httpx.URL(...).raw_path`` is ``bytes``; decode it so it is never
+    interpolated into a URL as its ``b'...'`` repr.
+    """
+    return httpx.URL(value).raw_path.decode()
+
+
 def _build_host_url(base_url: str, ip: str) -> str:
     """Build the Shodan ``/shodan/host/{ip}`` URL for an IP address."""
-    return f"{base_url.rstrip('/')}/shodan/host/{httpx.URL(ip).raw_path}"
+    return f"{base_url.rstrip('/')}/shodan/host/{_url_path(ip)}"
 
 
 def _build_resolve_url(base_url: str, hostname: str) -> str:
     """Build the Shodan ``/dns/resolve`` URL for a hostname."""
-    return f"{base_url.rstrip('/')}/dns/resolve?hostnames={httpx.URL(hostname).raw_path}"
+    return f"{base_url.rstrip('/')}/dns/resolve?hostnames={_url_path(hostname)}"
 
 
 def _extract_services(data: dict[str, Any]) -> list[dict[str, Any]]:

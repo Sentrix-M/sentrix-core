@@ -81,9 +81,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.user_repository = user_repository
     app.state.refresh_token_repository = refresh_token_repository
 
-    # Conversation engine — stateless and mock-backed for now.
-    app.state.conversation_service = ConversationService()
-
 # Long-Term Memory — SQLite when configured, otherwise in-memory.
     if settings.memory_backend == "sqlite":
         memory_db = MemoryDatabase(path=settings.memory_db_path)
@@ -91,6 +88,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         memory_db = MemoryDatabase(path=":memory:")
     memory_repository = SQLiteMemoryRepository(db=memory_db)
     app.state.memory_service = MemoryService(repository=memory_repository)
+
+    # Conversation engine — stateless and mock-backed for now. When long-term
+    # memory is available, each turn is recorded and recent context can be
+    # retrieved (best-effort).
+    app.state.conversation_service = ConversationService(
+        memory_service=app.state.memory_service,
+    )
 
     # RAG document ingestion engine — in-memory for development.
     document_repository = InMemoryDocumentRepository()
@@ -108,12 +112,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_executor = ToolExecutor(registry=tool_registry)
     app.state.tool_executor = tool_executor
 
-    # Incident Report Generator — combines tool results, MITRE, RAG, and the
-    # AI provider into a downloadable report (markdown/json/pdf).
+# Incident Report Generator — combines tool results, MITRE, RAG, and the
+    # AI provider into a downloadable report (markdown/json/pdf). Long-term
+    # memory records every report and honours the user's format preference.
     report_service = ReportService(
         executor=tool_executor,
         provider=factory.create(),
         rag_service=app.state.rag_service,
+        memory_service=app.state.memory_service,
     )
     app.state.report_service = report_service
     tool_registry.register(

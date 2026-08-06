@@ -9,12 +9,17 @@ Providers are registered through :class:`ProviderRegistry` as lightweight
 adapter objects implementing :class:`ProviderClient`. No concrete AI vendor
 is imported anywhere in the kernel — adapters are injected at composition
 time by the application layer.
+
+When an optional :class:`~app.memory.service.MemoryService` is provided
+(Phase 15B), recent conversation context is injected into the prompt on a
+best-effort basis. When omitted, the pipeline behaves exactly as before
+(backward compatible).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from app.kernel.context_builder import (
     ContextProvider,
@@ -27,6 +32,9 @@ from app.kernel.response_builder import (
     ResponseBuilder,
 )
 from app.kernel.router import KernelRequest, Route, Router
+
+if TYPE_CHECKING:
+    from app.memory.service import MemoryService
 
 
 def _tool_result_to_dict(result: Any) -> dict[str, object]:
@@ -102,6 +110,7 @@ class KernelPipeline:
         registry: ProviderRegistry,
         system_prompt: str = "",
         tool_coordinator: Any | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         """Build the pipeline.
 
@@ -115,6 +124,9 @@ class KernelPipeline:
         :param tool_coordinator: Optional :class:`ToolCoordinator` used to
             detect tool intents, execute mock tools, and feed results into
             the prompt.  When ``None``, tool integration is disabled.
+        :param memory_service: Optional :class:`MemoryService` used to inject
+            recent conversation context on a best-effort basis. When omitted
+            (default), no memory context is injected (backward compatible).
         """
         self._context_builder = context_builder
         self._router = router
@@ -123,6 +135,7 @@ class KernelPipeline:
         self._registry = registry
         self._system_prompt = system_prompt
         self._tool_coordinator = tool_coordinator
+        self._memory_service = memory_service
 
     @property
     def registry(self) -> ProviderRegistry:
@@ -133,6 +146,11 @@ class KernelPipeline:
     def tool_coordinator(self) -> Any | None:
         """The tool coordinator, or ``None`` when tool integration is off."""
         return self._tool_coordinator
+
+    @property
+    def memory_service(self) -> MemoryService | None:
+        """The optional memory service ("None" when not wired)."""
+        return self._memory_service
 
     def run(
         self,
@@ -160,6 +178,13 @@ class KernelPipeline:
             message=message,
         )
 
+        # Best-effort memory context injection (Phase 15B). Retrieves recent
+        # conversation context and appends it to the instruction so the
+        # provider can leverage long-term memory without altering the
+        # context-builder contract.
+        memory_context = self._collect_memory_context(conversation_id)
+        effective_instruction = self._merge_instruction(instruction, memory_context)
+
         # Tool integration: detect intent, execute tools (single or multi-tool
         # workflow), and collect the results so they can be fed into the
         # prompt builder. ``plan_and_execute`` falls back to the legacy
@@ -178,7 +203,7 @@ class KernelPipeline:
                         tools_used.append(result.tool)
 
         route = self._route(context, capabilities, preferred_provider)
-        prompt = self._build_prompt(context, instruction, tool_results)
+        prompt = self._build_prompt(context, effective_instruction, tool_results)
         output = self._invoke(route, prompt, tools_used)
         response = self._response_builder.build(
             provider=route.provider,
@@ -241,6 +266,43 @@ class KernelPipeline:
                 citations=output.citations,
             )
         return output
+
+    # ------------------------------------------------------------------
+    # Memory integration (Phase 15B)
+    # ------------------------------------------------------------------
+
+    def _collect_memory_context(self, conversation_id: str) -> str:
+        """Return recent conversation context as a compact text block.
+
+        Best-effort: returns ``""`` when no memory service is wired, the
+        retrieval fails, or there is no stored history.
+        """
+        if self._memory_service is None:
+            return ""
+        try:
+            records = self._memory_service.get_conversation_messages(
+                conversation_id=conversation_id,
+                limit=10,
+            )
+        except Exception:  # noqa: BLE001 - memory must never break the turn
+            return ""
+        if not records:
+            return ""
+        lines = [
+            f"{record.role}: {record.content}"
+            for record in reversed(records)
+        ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _merge_instruction(instruction: str | None, memory_context: str) -> str | None:
+        """Append memory context to the per-turn instruction, if any."""
+        if not memory_context:
+            return instruction
+        base = instruction or ""
+        if base:
+            return f"{base}\n\n[Long-term memory context]\n{memory_context}"
+        return f"[Long-term memory context]\n{memory_context}"
 
 
 __all__ = [
