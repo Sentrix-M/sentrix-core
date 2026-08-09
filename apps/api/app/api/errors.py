@@ -18,7 +18,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(SentrixError)
     async def sentrix_error_handler(
-        request: Request, exc: SentrixError
+        request: Request, exc: SentrixError  # noqa: ARG001 - FastAPI signature
     ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,

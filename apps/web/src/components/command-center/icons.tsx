@@ -354,3 +354,20 @@ export function StopIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <Svg title="Play" {...props}>
+      <path d="M7 4.5v15l12-7.5-12-7.5Z" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function VolumeIcon(props: IconProps) {
+  return (
+    <Svg title="Speak" {...props}>
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+      <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" />
+    </Svg>
+  );
+}

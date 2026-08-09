@@ -32,6 +32,7 @@ from app.kernel.pipeline import (
     ProviderRegistry,
 )
 from app.kernel.prompt_builder import Prompt, PromptBuilder
+from app.kernel.rag_context import DEFAULT_TOP_K, RagAwareContextProvider
 from app.kernel.response_builder import (
     KernelResponse,
     ProviderOutput,
@@ -48,6 +49,7 @@ from app.kernel.router import (
     Route,
     Router,
 )
+from app.kernel.tool_integration import ToolCoordinator, ToolDecision
 
 __all__ = [
     "Capability",
@@ -55,9 +57,13 @@ __all__ = [
     "ContextMessage",
     "ContextProvider",
     "ConversationContext",
+    "DEFAULT_TOP_K",
     "DefaultProviderRouter",
     "InMemoryContextProvider",
     "KernelError",
+    "RagAwareContextProvider",
+    "ToolCoordinator",
+    "ToolDecision",
     "build_kernel_pipeline",
     "get_kernel_provider",
     "KernelPipeline",

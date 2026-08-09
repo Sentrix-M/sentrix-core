@@ -9,7 +9,6 @@ interface and are wired through the dependency-injection container.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 
 
 class Repository(ABC):

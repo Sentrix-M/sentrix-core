@@ -67,6 +67,39 @@ def test_register_short_password_rejected(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_register_mixed_case_email_then_login_case_insensitive(
+    client: TestClient,
+) -> None:
+    """Regression: register with a mixed-case email must be resolved at login.
+
+    `register()` normalizes the email to lowercase before storing. Login must
+    then succeed regardless of the case used in the login request.
+    """
+    payload = _valid_register_payload()
+    payload["email"] = f"MiXeD_{uuid.uuid4().hex[:8]}@Sentrix.io"
+    registered = client.post("/api/v1/auth/register", json=payload)
+    assert registered.status_code == 201
+
+    # Login with a different case (lowercase) than the one used to register.
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"].lower(),
+            "password": payload["password"],
+        },
+    )
+    assert login.status_code == 200
+    assert "access_token" in login.json()
+
+    # Confirm the stored user email is normalized to lowercase.
+    me = client.get(
+        "/api/v1/auth/me",
+        headers=_auth_headers(login.json()["access_token"]),
+    )
+    assert me.status_code == 200
+    assert me.json()["email"] == payload["email"].lower()
+
+
 def test_login_with_seeded_admin(client: TestClient) -> None:
     response = client.post(
         "/api/v1/auth/login",

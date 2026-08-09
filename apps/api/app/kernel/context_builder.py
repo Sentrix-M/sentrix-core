@@ -29,6 +29,8 @@ class ConversationContext:
     conversation_id: str
     user_message: ContextMessage
     prior_messages: tuple[ContextMessage, ...] = field(default_factory=tuple)
+    retrieved_chunks: tuple[dict[str, object], ...] = field(default_factory=tuple)
+    citations: tuple[dict[str, object], ...] = field(default_factory=tuple)
 
 
 class ContextProvider(Protocol):

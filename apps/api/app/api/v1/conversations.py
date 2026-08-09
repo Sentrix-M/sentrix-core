@@ -8,18 +8,29 @@ future-proof metadata block reserved for reasoning/evidence/sources/tools.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_conversation_service
+from app.api.deps import (
+    get_conversation_service,
+    get_current_user,
+    get_memory_service,
+    get_tool_executor,
+)
+from app.memory.service import MemoryService
+from app.models.user import User
 from app.schemas.conversation import (
     ConversationMessageRequest,
     ConversationMessageResponse,
 )
 from app.services.conversation_service import ConversationService
 from app.streaming.manager import StreamingManager
+from app.tools.executor import ToolExecutor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -32,6 +43,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 )
 async def send_message(
     payload: ConversationMessageRequest,
+    current_user: Annotated[User, Depends(get_current_user)],  # noqa: ARG001 - auth guard
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ConversationMessageResponse:
     """Send a user message and receive an assistant response.
@@ -50,6 +62,10 @@ async def send_message(
 )
 async def stream_message(
     payload: ConversationMessageRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    tool_executor: Annotated[ToolExecutor, Depends(get_tool_executor)],
+    memory_service: Annotated[MemoryService, Depends(get_memory_service)],
+    request: Request,
 ) -> StreamingResponse:
     """Stream the assistant reply as Server-Sent Events.
 
@@ -57,10 +73,40 @@ async def stream_message(
     ``text/event-stream`` and emits ``status`` (thinking / generating),
     ``token``, ``completed``, ``error``, and ``done`` events using the
     :class:`StreamingManager` over the kernel pipeline (offline mock provider).
+
+    The streaming pipeline is wired with the shared mock Tool Engine so user
+    messages that express a tool intent (e.g. "list uploaded documents",
+    "run python", "execute terminal command") trigger the corresponding mock
+    tool and its output is fed into the prompt for a natural explanation.
+
+    The manager is also wired with the shared :class:`MemoryService` (for
+    long-term context) and the shared :class:`ReportService` (for streamed
+    report generation) when available on application state.
     """
-    manager = StreamingManager()
+    report_service = getattr(request.app.state, "report_service", None)
+    manager = StreamingManager(
+        tool_executor=tool_executor,
+        memory_service=memory_service,
+        report_service=report_service,
+    )
+    # Diagnostic: surface the provider instance wired into this stream's
+    # kernel pipeline so operators can confirm Gemini (or the mock fallback)
+    # is actually being used per request.
+    pipeline = manager._pipeline  # noqa: SLF001 - diagnostic access
+    provider_names = pipeline.registry.names()
+    provider = (
+        pipeline.registry.get(provider_names[0]) if provider_names else None
+    )
+    logger.info(
+        "conversations.stream_message — kernel pipeline provider: name=%s  type=%s",
+        getattr(provider, "name", "?"),
+        type(provider).__name__ if provider is not None else "None",
+    )
     return StreamingResponse(
-        manager.stream(payload),
+        manager.stream(
+            payload,
+            user_permissions=set(current_user.permissions),
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

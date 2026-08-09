@@ -23,6 +23,8 @@ class Prompt:
     instruction: str
     context: ConversationContext
     messages: tuple[ContextMessage, ...] = field(default_factory=tuple)
+    citations: tuple[dict[str, object], ...] = field(default_factory=tuple)
+    tool_results: tuple[dict[str, object], ...] = field(default_factory=tuple)
 
     def to_text(self) -> str:
         """Serialize the prompt to a single text block.
@@ -42,6 +44,46 @@ class Prompt:
                 f"{message.role}: {message.content}" for message in self.context.prior_messages
             )
             blocks.append(f"Conversation history:\n{history}")
+
+        # Inject retrieved RAG chunks as context
+        if self.context.retrieved_chunks:
+            ctx_lines = ["Retrieved context:"]
+            for i, chunk in enumerate(self.context.retrieved_chunks, 1):
+                text = chunk.get("text", "")
+                source = chunk.get("filename", "unknown")
+                page = chunk.get("page_number", "?")
+                ctx_lines.append(
+                    f"[{i}] (Source: {source}, Page: {page})\n{text}"
+                )
+            ctx_lines.append(
+                "Use the retrieved context above to answer the user's question. "
+                "If the context is not relevant, answer based on your knowledge. "
+                "Always cite the source filename and page number when using retrieved context."
+            )
+            blocks.append("\n".join(ctx_lines))
+
+        # Inject tool results as context for the provider to explain naturally.
+        if self.tool_results:
+            tool_lines = ["Tool results:"]
+            for i, result in enumerate(self.tool_results, 1):
+                tool_name = result.get("tool", "unknown")
+                success = bool(result.get("success", False))
+                status = "succeeded" if success else "failed"
+                tool_lines.append(f"[{i}] {tool_name} {status}")
+                if success:
+                    output = result.get("output")
+                    if output is not None:
+                        tool_lines.append(f"Output: {output}")
+                error = result.get("error")
+                if error:
+                    tool_lines.append(f"Error: {error}")
+            tool_lines.append(
+                "Use the tool results above to answer the user's request naturally "
+                "and accurately. When a tool failed, explain what happened and "
+                "suggest a next step."
+            )
+            blocks.append("\n".join(tool_lines))
+
         if self.instruction:
             blocks.append(f"Instruction: {self.instruction}")
 
@@ -57,6 +99,7 @@ class PromptBuilder(Protocol):
         context: ConversationContext,
         system: str,
         instruction: str,
+        tool_results: tuple[dict[str, object], ...] = (),
     ) -> Prompt:
         """Assemble a :class:`Prompt` from context and directives."""
         ...
@@ -75,6 +118,7 @@ class DefaultPromptBuilder:
         context: ConversationContext,
         system: str,
         instruction: str,
+        tool_results: tuple[dict[str, object], ...] = (),
     ) -> Prompt:
         """Assemble the prompt.
 
@@ -82,6 +126,7 @@ class DefaultPromptBuilder:
             any prior messages).
         :param system: The system prompt/instructions for the provider.
         :param instruction: The task-specific instruction for this turn.
+        :param tool_results: Optional tool outputs to inject into the prompt.
         """
         messages: list[ContextMessage] = [context.user_message]
         messages.extend(context.prior_messages)
@@ -91,6 +136,8 @@ class DefaultPromptBuilder:
             instruction=instruction,
             context=context,
             messages=tuple(messages),
+            citations=tuple(context.citations),
+            tool_results=tuple(tool_results),
         )
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 from app.kernel.integration import build_kernel_pipeline
 from app.kernel.pipeline import KernelPipeline
@@ -25,6 +26,11 @@ from app.streaming.events import (
     token_event,
 )
 from app.streaming.formatter import format_event, heartbeat
+from app.tools.executor import ToolExecutor
+
+if TYPE_CHECKING:
+    from app.memory.service import MemoryService
+    from app.reports.service import ReportService
 
 #: Default inter-token delay (seconds) used to simulate a live provider stream.
 DEFAULT_TOKEN_DELAY_SECONDS = 0.015
@@ -48,6 +54,9 @@ class StreamingManager:
         *,
         pipeline: KernelPipeline | None = None,
         token_delay_seconds: float = DEFAULT_TOKEN_DELAY_SECONDS,
+        tool_executor: ToolExecutor | None = None,
+        memory_service: MemoryService | None = None,
+        report_service: ReportService | None = None,
     ) -> None:
         """Create the manager.
 
@@ -55,17 +64,43 @@ class StreamingManager:
             from :func:`build_kernel_pipeline` (offline mock provider).
         :param token_delay_seconds: Simulated delay between token events.
             Pass ``0`` in tests to make streams run instantly.
+        :param tool_executor: Optional :class:`ToolExecutor` used to build a
+            tool-aware kernel pipeline so the stream can execute mock tools
+            and surface ``tools_used`` in the ``completed`` event.
+        :param memory_service: Optional :class:`MemoryService` passed through
+            to the kernel pipeline for long-term memory context (best-effort).
+        :param report_service: Optional :class:`ReportService` passed through
+            to the kernel pipeline so streamed workflows can generate and
+            persist incident reports (best-effort).
         """
-        self._pipeline = pipeline or build_kernel_pipeline()
+        self._pipeline = pipeline or build_kernel_pipeline(
+            tool_executor=tool_executor,
+            memory_service=memory_service,
+            report_service=report_service,
+        )
+        self._report_service = report_service
         self._token_delay_seconds = token_delay_seconds
 
-    async def stream(self, request: ConversationMessageRequest) -> AsyncIterator[str]:
+    @property
+    def report_service(self) -> ReportService | None:
+        """The optional report service ("None" when not wired)."""
+        return self._report_service
+
+    async def stream(
+        self,
+        request: ConversationMessageRequest,
+        *,
+        user_permissions: set[str] | None = None,
+    ) -> AsyncIterator[str]:
         """Yield serialised SSE blocks for ``request``.
 
         Event sequence: ``heartbeat`` → ``status: thinking`` →
         ``status: generating`` → ``token``* → ``completed`` → ``done``.
         On failure, an ``error`` event precedes ``done`` so the stream always
         terminates with a well-formed block.
+
+        :param user_permissions: Optional permission strings used to authorize
+            mock tool execution inside the kernel pipeline.
         """
         started = perf_counter()
         yield heartbeat()
@@ -83,6 +118,7 @@ class StreamingManager:
                 self._pipeline.run,
                 conversation_id=request.conversation_id,
                 message=request.message,
+                user_permissions=user_permissions,
             )
 
             yield format_event(
@@ -104,6 +140,8 @@ class StreamingManager:
                     model=response.model,
                     content=response.content,
                     execution_time_ms=execution_time_ms,
+                    citations=list(response.citations) if response.citations else None,
+                    tools_used=list(response.tools_used) if response.tools_used else None,
                 )
             )
         except asyncio.CancelledError:

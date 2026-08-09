@@ -1,3 +1,7 @@
+"use client";
+
+import Link from "next/link";
+
 import {
   AlertIcon,
   CrosshairIcon,
@@ -13,7 +17,8 @@ import {
   SystemHealth,
   ToolStatus,
 } from "@/components/command-center/widgets";
-import { currentUser, kernelStatus, type QuickAction, quickActions } from "@/lib/mock-data";
+import { kernelStatus, type QuickAction, quickActions } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
 
 const actionIcons: Record<QuickAction["icon"], typeof SparklesIcon> = {
   logs: RadarIcon,
@@ -23,11 +28,20 @@ const actionIcons: Record<QuickAction["icon"], typeof SparklesIcon> = {
   scan: ShieldIcon,
 };
 
+/** Route each quick action to the most relevant existing page. */
+const actionRoutes: Record<QuickAction["icon"], string> = {
+  logs: "/chat",
+  alerts: "/incidents",
+  hunt: "/threat-hunting",
+  file: "/chat",
+  scan: "/chat",
+};
+
 function QuickActionCard({ action }: { action: QuickAction }) {
   const Icon = actionIcons[action.icon];
   return (
-    <button
-      type="button"
+    <Link
+      href={actionRoutes[action.icon]}
       className="glass glass-hover group flex flex-col gap-2 rounded-2xl p-4 text-left"
     >
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/90 to-indigo-600 text-zinc-950 shadow-lg shadow-cyan-500/10">
@@ -37,11 +51,14 @@ function QuickActionCard({ action }: { action: QuickAction }) {
         <p className="text-[13px] font-semibold text-zinc-100">{action.label}</p>
         <p className="mt-0.5 text-[11px] text-zinc-500">{action.description}</p>
       </div>
-    </button>
+    </Link>
   );
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const firstName = user?.full_name.split(" ")[0] ?? "User";
+
   return (
     <div className="flex flex-col gap-5">
       {/* Greeting banner */}
@@ -62,23 +79,23 @@ export default function DashboardPage() {
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl">
               Welcome back,{" "}
               <span className="bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">
-                {currentUser.name.split(" ")[0]}
+                {firstName}
               </span>
             </h1>
             <p className="mt-1.5 text-sm text-zinc-400">
               <span className="font-semibold text-emerald-300">{kernelStatus.sinceLabel}</span> ·
-              Kernel online for {kernelStatus.uptime} · {currentUser.title}
+              Kernel online for {kernelStatus.uptime} · {user?.role ?? "Analyst"}
             </p>
           </div>
 
           <div className="shrink-0">
-            <button
-              type="button"
+            <Link
+              href="/chat"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-cyan-500/20 transition-all hover:brightness-110"
             >
               <SparklesIcon className="h-4 w-4" />
               Open AI Copilot
-            </button>
+            </Link>
           </div>
         </div>
       </section>

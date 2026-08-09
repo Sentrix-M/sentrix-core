@@ -50,18 +50,22 @@ def completed_event(
     model: str | None,
     content: str,
     execution_time_ms: int,
+    citations: list[dict[str, object]] | None = None,
+    tools_used: list[str] | None = None,
 ) -> StreamEvent:
     """Build a ``completed`` event with the full assembled reply."""
-    return StreamEvent(
-        "completed",
-        {
-            "provider": provider,
-            "model": model,
-            "content": content,
-            "execution_time_ms": execution_time_ms,
-            "at": _now(),
-        },
-    )
+    payload: dict[str, Any] = {
+        "provider": provider,
+        "model": model,
+        "content": content,
+        "execution_time_ms": execution_time_ms,
+        "at": _now(),
+    }
+    if citations:
+        payload["citations"] = citations
+    if tools_used:
+        payload["tools_used"] = tools_used
+    return StreamEvent("completed", payload)
 
 
 def error_event(message: str) -> StreamEvent:

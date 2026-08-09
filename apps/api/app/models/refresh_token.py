@@ -43,7 +43,7 @@ class RefreshToken(BaseModel):
     def is_active(self) -> bool:
         return self.state == RefreshTokenState.ACTIVE
 
-    def rotated_copy(self, *, now: datetime) -> "RefreshToken":
+    def rotated_copy(self, *, now: datetime) -> RefreshToken:
         """Return a copy of this token with state set to ``USED``."""
         return self.model_copy(
             update={"state": RefreshTokenState.USED, "updated_at": now}

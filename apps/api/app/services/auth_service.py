@@ -19,14 +19,13 @@ from datetime import datetime, timezone
 
 from app.config.settings import Settings
 from app.core.exceptions import (
-    InvalidCredentialsError,
     InsufficientPermissionsError,
-    TokenAlreadyRevokedError,
+    InvalidCredentialsError,
     UserAlreadyExistsError,
     UserNotFoundError,
 )
 from app.core.security import hash_password, verify_password
-from app.models.role import RoleName, get_role_permissions
+from app.models.role import RoleName
 from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
@@ -77,7 +76,7 @@ class AuthService:
         now = datetime.now(timezone.utc)
         user = User(
             id=str(uuid.uuid4()),
-            email=request.email,
+            email=email,
             full_name=request.full_name.strip(),
             password_hash=hash_password(request.password),
             role=self.DEFAULT_REGISTER_ROLE,

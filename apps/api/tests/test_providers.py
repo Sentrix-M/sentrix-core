@@ -1,12 +1,15 @@
 """Unit tests for the Sentrix AI Provider Layer.
 
 Covers :class:`BaseProvider`/``ProviderHealth``, the deterministic
-:class:`MockProvider`, the :class:`ProviderFactory`, and the kernel
-integration helper (``build_kernel_pipeline`` / ``get_kernel_provider``).
+:class:`MockProvider`, the :class:`ProviderFactory`, the cloud
+:class:`GeminiProvider`, and the kernel integration helper
+(``build_kernel_pipeline`` / ``get_kernel_provider``).
 No network access is used anywhere.
 """
 
 from __future__ import annotations
+
+from typing import cast
 
 import pytest
 
@@ -16,6 +19,11 @@ from app.kernel.prompt_builder import DefaultPromptBuilder, Prompt
 from app.kernel.router import Capability
 from app.providers.base import BaseProvider, ProviderHealth, check_health
 from app.providers.factory import DEFAULT_PROVIDER, ProviderFactory
+from app.providers.gemini import (
+    GeminiError,
+    GeminiNotConfiguredError,
+    GeminiProvider,
+)
 from app.providers.mock import MockProvider
 
 # ---------------------------------------------------------------------------
@@ -33,6 +41,19 @@ def _make_prompt(message: str = "Analyze the log file") -> Prompt:
         context=context,
         system="You are a SOC analyst.",
         instruction="Be concise.",
+    )
+
+
+def _patch_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force deterministic settings (mock provider, default model) for tests.
+
+    Tests must not depend on the developer's environment (AI_PROVIDER,
+    GEMINI_API_KEY, GEMINI_MODEL). This patches ``get_settings`` so the
+    factory resolves the mock provider and the Gemini model is the default.
+    """
+    monkeypatch.setattr(
+        "app.config.settings.get_settings",
+        lambda: _SettingsWithNoKey(),
     )
 
 
@@ -150,7 +171,8 @@ class TestMockProvider:
 
 
 class TestProviderFactory:
-    def test_default_provider_is_mock(self) -> None:
+    def test_default_provider_is_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         assert DEFAULT_PROVIDER == "mock"
         factory = ProviderFactory()
         provider = factory.create()
@@ -197,14 +219,18 @@ class TestProviderFactory:
 
 
 class TestKernelIntegration:
-    def test_build_kernel_pipeline_registers_mock_provider(self) -> None:
+    def test_build_kernel_pipeline_registers_mock_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_settings(monkeypatch)
         from app.kernel.integration import build_kernel_pipeline
 
         pipeline = build_kernel_pipeline()
         assert isinstance(pipeline.registry, ProviderRegistry)
         assert "mock" in pipeline.registry.names()
 
-    def test_build_kernel_pipeline_runs_turn(self) -> None:
+    def test_build_kernel_pipeline_runs_turn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
         from app.kernel.integration import build_kernel_pipeline
         from app.kernel.response_builder import KernelResponse
 
@@ -275,3 +301,288 @@ class TestBaseProviderProtocol:
         assert callable(provider.generate)
         assert callable(provider.stream)
         assert callable(provider.health)
+
+
+# ---------------------------------------------------------------------------
+# GeminiProvider
+# ---------------------------------------------------------------------------
+
+
+class _FakeGeminiPart:
+    """Stand-in for ``google.genai.types.Part``."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class _FakeGeminiResponse:
+    """Stand-in for ``google.genai.types.GenerateContentResponse``."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    @property
+    def text(self) -> str | None:
+        return self._text
+
+    @property
+    def parts(self) -> list[_FakeGeminiPart]:
+        return [_FakeGeminiPart(self._text)] if self._text else []
+
+
+class _FakeGeminiModels:
+    """Stub for ``client.models`` that records calls."""
+
+    def __init__(self, *, response_text: str, stream_chunks: list[str] | None = None) -> None:
+        self.response_text = response_text
+        self.stream_chunks = stream_chunks or []
+        self.generated_calls: list[
+            tuple[str, list[dict[str, object]], dict[str, object] | None]
+        ] = []
+        self.stream_calls: list[
+            tuple[str, list[dict[str, object]], dict[str, object] | None]
+        ] = []
+
+    def generate_content(
+        self,
+        model: str,
+        contents: list[dict[str, object]],
+        config: dict[str, object] | None = None,
+    ):
+        self.generated_calls.append((model, contents, config))
+        return _FakeGeminiResponse(self.response_text)
+
+    def generate_content_stream(
+        self,
+        model: str,
+        contents: list[dict[str, object]],
+        config: dict[str, object] | None = None,
+    ):
+        self.stream_calls.append((model, contents, config))
+        return [
+            _FakeGeminiResponse(chunk)
+            for chunk in self.stream_chunks
+            if chunk
+        ]
+
+
+class _FakeGeminiClient:
+    """Stand-in for ``google.genai.Client``."""
+
+    def __init__(self, *, response_text: str = "", stream_chunks: list[str] | None = None) -> None:
+        self.models = _FakeGeminiModels(
+            response_text=response_text,
+            stream_chunks=stream_chunks,
+        )
+
+
+class TestGeminiProvider:
+    def test_implements_base_provider_protocol(self) -> None:
+        provider: BaseProvider = GeminiProvider(
+            api_key="test-key",
+            client_factory=lambda: None,  # type: ignore[return-value]
+        )
+        assert provider.name == "gemini"
+
+    def test_raises_when_key_missing(self) -> None:
+        with pytest.raises(GeminiNotConfiguredError):
+            GeminiProvider(api_key="")
+
+    def test_raises_when_key_whitespace(self) -> None:
+        with pytest.raises(GeminiNotConfiguredError):
+            GeminiProvider(api_key="   ")
+
+    def test_generate_returns_normalized_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
+        fake = _FakeGeminiClient(response_text="Beacon detected on LAB-07.")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        output = provider.generate(_make_prompt("Investigate the beacon"))
+        assert output.text == "Beacon detected on LAB-07."
+        assert output.model == "gemini-3.5-flash"
+        assert output.metadata["provider"] == "gemini"
+        assert output.metadata["mode"] == "cloud"
+
+    def test_generate_passes_model_and_contents(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
+        fake = _FakeGeminiClient(response_text="ok")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        prompt = _make_prompt("Analyze the log file")
+        provider.generate(prompt)
+        assert fake.models.generated_calls
+        model, contents, _config = fake.models.generated_calls[0]
+        assert model == "gemini-3.5-flash"
+        assert isinstance(contents, list)
+        assert contents
+
+    def test_generate_ranks_parts_with_system(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_settings(monkeypatch)
+        fake = _FakeGeminiClient(response_text="ok")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        provider.generate(_make_prompt("Analyze the log file"))
+        model, contents, config = fake.models.generated_calls[0]
+        assert model == "gemini-3.5-flash"
+        # The system prompt is delivered via config.system_instruction, not
+        # as a "system" role inside contents (as required by google-genai v2.x).
+        assert config is not None
+        assert config["system_instruction"] == "You are a SOC analyst."
+        # contents carry only user/model turns with parts[].text.
+        assert contents[0]["role"] == "user"
+        parts = cast(list[dict[str, object]], contents[0]["parts"])
+        assert "Analyze the log file" in cast(str, parts[0]["text"])
+
+    def test_generate_injects_tool_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gemini must receive successful ToolResults so it answers from live data."""
+        _patch_settings(monkeypatch)
+        fake = _FakeGeminiClient(response_text="VirusTotal flags this as malicious.")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        context = ConversationContext(
+            conversation_id="conv-test",
+            user_message=ContextMessage(role="user", content="Check VirusTotal for 8.8.8.8"),
+            prior_messages=(),
+        )
+        prompt = DefaultPromptBuilder().build(
+            context=context,
+            system="You are a SOC analyst.",
+            instruction="",
+            tool_results=(
+                {
+                    "tool": "virustotal",
+                    "success": True,
+                    "output": {"malicious": 15, "query": "8.8.8.8"},
+                    "error": None,
+                },
+            ),
+        )
+        provider.generate(prompt)
+        assert fake.models.generated_calls
+        _model, contents, _config = fake.models.generated_calls[0]
+        user_text = cast(str, contents[0]["parts"][0]["text"]) if contents else ""
+        assert "Tool results:" in user_text
+        assert "virustotal" in user_text
+        assert "succeeded" in user_text
+        assert "8.8.8.8" in user_text
+
+    def test_generate_raises_on_empty_response(self) -> None:
+        fake = _FakeGeminiClient(response_text="")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        with pytest.raises(GeminiError):
+            provider.generate(_make_prompt("Hello"))
+
+    def test_generate_normalizes_sdk_error(self) -> None:
+        class _ExplodingModels(_FakeGeminiModels):
+            def __init__(self) -> None:
+                super().__init__(response_text="")
+
+            def generate_content(
+                self,
+                model: str,  # noqa: ARG002
+                contents: list[dict[str, object]],  # noqa: ARG002
+                config: dict[str, object] | None = None,  # noqa: ARG002
+            ):
+                raise RuntimeError("boom")
+
+        fake = _FakeGeminiClient(response_text="")
+        fake.models = _ExplodingModels()
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        with pytest.raises(GeminiError):
+            provider.generate(_make_prompt("Hello"))
+
+    def test_stream_returns_word_chunks(self) -> None:
+        fake = _FakeGeminiClient(
+            stream_chunks=["Gemini", " streams", " words"],
+            response_text="Gemini streams words",
+        )
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        chunks = provider.stream(_make_prompt("Beacon detected"))
+        assert isinstance(chunks, list)
+        assert chunks
+        assert " ".join(chunks) == "Gemini streams words"
+
+    def test_stream_joins_fragments(self) -> None:
+        fake = _FakeGeminiClient(
+            stream_chunks=["Hello", " world", "!"],
+            response_text="Hello world!",
+        )
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        assert " ".join(provider.stream(_make_prompt("Hi"))) == "Hello world!"
+
+    def test_stream_raises_when_empty(self) -> None:
+        fake = _FakeGeminiClient(stream_chunks=[], response_text="")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        with pytest.raises(GeminiError):
+            provider.stream(_make_prompt("Hi"))
+
+    def test_health_false_when_key_missing(self) -> None:
+        # The constructor raises for an empty key; bypass it via __new__ to
+        # test the health() path directly.
+        provider = GeminiProvider.__new__(GeminiProvider)
+        provider.api_key = ""
+        provider._client = None
+        provider._client_factory = lambda: _FakeGeminiClient()
+        provider.model = "gemini-3.5-flash"
+        health = provider.health()
+        assert health.ok is False
+        assert "not configured" in health.message.lower()
+
+    def test_health_true_when_configured(self) -> None:
+        provider = GeminiProvider(
+            api_key="test-key",
+            client_factory=lambda: _FakeGeminiClient(),
+        )
+        health = provider.health()
+        assert health.ok is True
+        assert "configured" in health.message.lower()
+
+    def test_health_catches_client_errors(self) -> None:
+        class _BrokenClientFactory:
+            def __call__(self):
+                raise RuntimeError("cannot build client")
+
+        provider = GeminiProvider(
+            api_key="test-key",
+            client_factory=_BrokenClientFactory(),
+        )
+        health = provider.health()
+        assert health.ok is False
+        assert "client error" in health.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# GeminiProvider ↔ ProviderFactory fallback
+# ---------------------------------------------------------------------------
+
+
+class TestGeminiFactoryFallback:
+    def test_factory_registers_gemini(self) -> None:
+        factory = ProviderFactory()
+        assert "gemini" in factory.names()
+
+    def test_factory_falls_back_to_mock_without_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without GEMINI_API_KEY, requesting 'gemini' yields MockProvider."""
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        # Ensure settings are re-read without a key.
+        monkeypatch.setattr(
+            "app.config.settings.get_settings",
+            lambda: _SettingsWithNoKey(),
+        )
+
+        factory = ProviderFactory()
+        provider = factory.create("gemini")
+        assert isinstance(provider, MockProvider)
+        assert provider.name == "mock"
+
+    def test_factory_mock_default_still_works(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        factory = ProviderFactory()
+        monkeypatch.delenv("AI_PROVIDER", raising=False)
+        provider = factory.create()
+        assert isinstance(provider, MockProvider)
+
+
+class _SettingsWithNoKey:
+    """Settings stub exposing just the fields the factory reads."""
+
+    ai_provider = "mock"
+    gemini_api_key = ""
+    gemini_model = "gemini-3.5-flash"
+

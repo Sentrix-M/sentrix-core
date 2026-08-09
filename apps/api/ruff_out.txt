@@ -1,0 +1,119 @@
+invalid-syntax: Unexpected indentation
+  --> app\main.py:85:1
+   |
+84 |     # RAG document ingestion engine ΓÇö in-memory for development.
+85 |     document_repository = InMemoryDocumentRepository()
+   | ^^^^
+86 |     app.state.rag_service = RagService(repository=document_repository)
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> app\reports\engine.py:23:1
+   |
+21 |   """
+22 |
+23 | / from __future__ import annotations
+24 | |
+25 | | from typing import Any, Callable
+26 | |
+27 | | from app.kernel.prompt_builder import Prompt
+28 | | from app.kernel.response_builder import ProviderOutput
+29 | | from app.mitre.models import MitreMapping
+30 | | from app.mitre.mapper import MitreMapper
+31 | | from app.providers.base import BaseProvider
+32 | | from app.rag.schemas import SearchResultItem
+33 | | from app.reports.models import (
+34 | |     AffectedAsset,
+35 | |     IncidentReport,
+36 | |     IndicatorOfCompromise,
+37 | |     RiskAssessment,
+38 | |     Severity,
+39 | |     TimelineEvent,
+40 | | )
+41 | | from app.tools.base import ToolResult
+   | |_____________________________________^
+42 |
+43 |   #: Default system instruction used when asking the provider for an executive summary.
+   |
+help: Organize imports
+   |
+28 | from app.kernel.response_builder import ProviderOutput
+29 + from app.mitre.mapper import MitreMapper
+30 | from app.mitre.models import MitreMapping
+   - from app.mitre.mapper import MitreMapper
+31 | from app.providers.base import BaseProvider
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+  --> app\reports\engine.py:25:1
+   |
+23 | from __future__ import annotations
+24 |
+25 | from typing import Any, Callable
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 |
+27 | from app.kernel.prompt_builder import Prompt
+   |
+help: Import from `collections.abc`
+   |
+24 |
+   - from typing import Any, Callable
+25 + from typing import Any
+26 + from collections.abc import Callable
+27 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+   --> app\reports\engine.py:657:5
+    |
+655 | def _empty_context():
+656 |     """Build an empty conversation context for the summary prompt."""
+657 |     from app.kernel.context_builder import ConversationContext, ContextMessage
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+658 |
+659 |     return ConversationContext(
+    |
+help: Organize imports
+    |
+656 |     """Build an empty conversation context for the summary prompt."""
+    -     from app.kernel.context_builder import ConversationContext, ContextMessage
+657 +     from app.kernel.context_builder import ContextMessage, ConversationContext
+658 |
+    |
+
+F401 [*] `json` imported but unused
+  --> app\reports\service.py:16:8
+   |
+14 | from __future__ import annotations
+15 |
+16 | import json
+   |        ^^^^
+17 | from pathlib import Path
+18 | from typing import Any
+   |
+help: Remove unused import: `json`
+   |
+15 |
+   - import json
+16 | from pathlib import Path
+   |
+
+F401 [*] `app.reports.models.Severity` imported but unused
+  --> app\reports\service.py:27:5
+   |
+25 |     IncidentReport,
+26 |     ReportFormat,
+27 |     Severity,
+   |     ^^^^^^^^
+28 | )
+29 | from app.tools.base import ToolResult
+   |
+help: Remove unused import: `app.reports.models.Severity`
+   |
+26 |     ReportFormat,
+   -     Severity,
+27 | )
+   |
+
+Found 6 errors.
+[*] 5 fixable with the `--fix` option.

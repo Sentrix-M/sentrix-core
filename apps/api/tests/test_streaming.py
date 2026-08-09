@@ -27,6 +27,13 @@ from app.streaming.events import (
 from app.streaming.formatter import format_event
 from app.streaming.manager import StreamingManager
 
+ADMIN_EMAIL = "admin@sentrix.io"
+ADMIN_PASSWORD = "ChangeMe_123!"
+
+
+def _auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
 
 def _valid_payload() -> dict[str, str]:
     return {
@@ -57,6 +64,17 @@ def client() -> TestClient:
     """Return a TestClient with the application lifespan executed."""
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(scope="module")
+def admin_token(client: TestClient) -> str:
+    """Log in as the seeded admin and return the access token."""
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+    )
+    assert response.status_code == 200
+    return response.json()["access_token"]
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +184,10 @@ def test_manager_wraps_errors_before_done() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_stream_endpoint_returns_sse_stream(client: TestClient) -> None:
+def test_stream_endpoint_returns_sse_stream(client: TestClient, admin_token: str) -> None:
     payload = _valid_payload()
-    response = client.post("/api/v1/conversations/stream", json=payload)
+    headers = _auth_headers(admin_token)
+    response = client.post("/api/v1/conversations/stream", json=payload, headers=headers)
 
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
@@ -183,10 +202,11 @@ def test_stream_endpoint_returns_sse_stream(client: TestClient) -> None:
 
 
 def test_stream_endpoint_reassembled_content_matches_completed(
-    client: TestClient,
+    client: TestClient, admin_token: str
 ) -> None:
     payload = _valid_payload()
-    response = client.post("/api/v1/conversations/stream", json=payload)
+    headers = _auth_headers(admin_token)
+    response = client.post("/api/v1/conversations/stream", json=payload, headers=headers)
     assert response.status_code == 200
 
     tokens: list[str] = []
@@ -200,8 +220,9 @@ def test_stream_endpoint_reassembled_content_matches_completed(
     assert " ".join(tokens) == content
 
 
-def test_stream_endpoint_validates_payload(client: TestClient) -> None:
+def test_stream_endpoint_validates_payload(client: TestClient, admin_token: str) -> None:
     payload = _valid_payload()
     payload["message"] = ""
-    response = client.post("/api/v1/conversations/stream", json=payload)
+    headers = _auth_headers(admin_token)
+    response = client.post("/api/v1/conversations/stream", json=payload, headers=headers)
     assert response.status_code == 422

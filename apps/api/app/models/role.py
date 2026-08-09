@@ -55,6 +55,16 @@ TOOLS_EXECUTE = "tools:execute"
 REPORTS_GENERATE = "reports:generate"
 AGENTS_RUN = "agents:run"
 
+# Tool engine resources
+FILESYSTEM_READ = "filesystem:read"
+FILESYSTEM_WRITE = "filesystem:write"
+TERMINAL_EXECUTE = "terminal:execute"
+PYTHON_EXECUTE = "python:execute"
+NETWORK_SCAN = "network:scan"
+
+# Threat intelligence
+THREATINTEL_READ = "threatintel:read"
+
 # Integration & admin
 INTEGRATIONS_MANAGE = "integrations:manage"
 BILLING_MANAGE = "billing:manage"
@@ -103,6 +113,12 @@ ROLE_CATALOG: dict[str, Role] = {
             HUNTS_RUN,
             FORENSICS_RUN,
             TOOLS_EXECUTE,
+FILESYSTEM_READ,
+            FILESYSTEM_WRITE,
+            TERMINAL_EXECUTE,
+            PYTHON_EXECUTE,
+NETWORK_SCAN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
             AGENTS_RUN,
             INTEGRATIONS_MANAGE,
@@ -113,11 +129,12 @@ ROLE_CATALOG: dict[str, Role] = {
     RoleName.SOC_ANALYST.value: Role(
         RoleName.SOC_ANALYST,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             ALERTS_TRIAGE,
             INVESTIGATIONS_READ,
             INVESTIGATIONS_WRITE,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Tiered SOC analyst: triage, investigate, and report.",
@@ -125,10 +142,11 @@ ROLE_CATALOG: dict[str, Role] = {
     RoleName.THREAT_HUNTER.value: Role(
         RoleName.THREAT_HUNTER,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             INVESTIGATIONS_READ,
             HUNTS_RUN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Proactive threat hunting across telemetry.",
@@ -147,11 +165,13 @@ ROLE_CATALOG: dict[str, Role] = {
         "Digital forensics and incident response.",
     ),
     RoleName.RED_TEAM.value: Role(
-        RoleName.RED_TEAM,
+RoleName.RED_TEAM,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
+            NETWORK_SCAN,
+            THREATINTEL_READ,
             REPORTS_GENERATE,
         },
         "Offensive security assessments and controlled tooling.",
@@ -170,12 +190,14 @@ ROLE_CATALOG: dict[str, Role] = {
         "Defensive security operations.",
     ),
     RoleName.SECURITY_ENGINEER.value: Role(
-        RoleName.SECURITY_ENGINEER,
+RoleName.SECURITY_ENGINEER,
         {
-            DASHBOARD_VIEW,
+DASHBOARD_VIEW,
             ALERTS_READ,
             INVESTIGATIONS_READ,
             TOOLS_EXECUTE,
+            NETWORK_SCAN,
+            THREATINTEL_READ,
             INTEGRATIONS_MANAGE,
             REPORTS_GENERATE,
         },
