@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   AlertIcon,
   CrosshairIcon,
@@ -26,11 +28,20 @@ const actionIcons: Record<QuickAction["icon"], typeof SparklesIcon> = {
   scan: ShieldIcon,
 };
 
+/** Route each quick action to the most relevant existing page. */
+const actionRoutes: Record<QuickAction["icon"], string> = {
+  logs: "/chat",
+  alerts: "/incidents",
+  hunt: "/threat-hunting",
+  file: "/chat",
+  scan: "/chat",
+};
+
 function QuickActionCard({ action }: { action: QuickAction }) {
   const Icon = actionIcons[action.icon];
   return (
-    <button
-      type="button"
+    <Link
+      href={actionRoutes[action.icon]}
       className="glass glass-hover group flex flex-col gap-2 rounded-2xl p-4 text-left"
     >
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/90 to-indigo-600 text-zinc-950 shadow-lg shadow-cyan-500/10">
@@ -40,7 +51,7 @@ function QuickActionCard({ action }: { action: QuickAction }) {
         <p className="text-[13px] font-semibold text-zinc-100">{action.label}</p>
         <p className="mt-0.5 text-[11px] text-zinc-500">{action.description}</p>
       </div>
-    </button>
+    </Link>
   );
 }
 
@@ -78,13 +89,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="shrink-0">
-            <button
-              type="button"
+            <Link
+              href="/chat"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-cyan-500/20 transition-all hover:brightness-110"
             >
               <SparklesIcon className="h-4 w-4" />
               Open AI Copilot
-            </button>
+            </Link>
           </div>
         </div>
       </section>

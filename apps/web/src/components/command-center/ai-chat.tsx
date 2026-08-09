@@ -9,12 +9,29 @@ import {
   ConnectionIcon,
   LayersIcon,
   MicIcon,
+  PlayIcon,
   SendIcon,
   SparklesIcon,
   StopIcon,
 } from "@/components/command-center/icons";
-import { conversationApi, type StreamCompletedPayload } from "@/lib/api";
+import { conversationApi, getAccessToken, ttsApi, type StreamCompletedPayload } from "@/lib/api";
 import { type ChatMessage, chatMessages, suggestedPrompts } from "@/lib/mock-data";
+
+/** Voice input UI states (Phase 16B). */
+type VoiceState = "idle" | "listening" | "transcribing" | "thinking" | "speaking";
+
+const VOICE_LABELS: Record<VoiceState, string> = {
+  idle: "🎤 Idle",
+  listening: "🎙 Listening…",
+  transcribing: "📝 Transcribing…",
+  thinking: "🤖 Thinking…",
+  speaking: "🗣 Speaking…",
+};
+
+/** WebSocket base URL derived from the REST API URL (http→ws, https→wss). */
+const API_WS_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
+  .replace(/^https/, "wss")
+  .replace(/^http/, "ws");
 
 /** Build a display message from a completed backend conversation response. */
 function toChatMessage(
@@ -164,7 +181,7 @@ function TypingIndicator({ label = "Sentrix is reasoning…" }: { label?: string
   );
 }
 
-export function AiChat() {
+export function AiChat({ autoStartVoice = false }: { autoStartVoice?: boolean }) {
   const [messages, setMessages] = useState<ChatMessage[]>(chatMessages);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -178,6 +195,20 @@ export function AiChat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
+
+  // Voice input (Phase 16B) — mic permission, MediaRecorder, WS→STT.
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [partialTranscript, setPartialTranscript] = useState("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const finalTranscriptRef = useRef<string | null>(null);
+
+  // Voice output (Phase 16C) — TTS playback state/refs.
+  const [speaking, setSpeaking] = useState(false);
+  const [lastSpoken, setLastSpoken] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   const agents = [
     "SOC Agent",
@@ -217,6 +248,358 @@ export function AiChat() {
     setStreaming(false);
     setStreamPhase("idle");
   }, []);
+
+  // ------------------------------------------------------------------
+  // Voice output (Phase 16C) — TTS playback
+  // ------------------------------------------------------------------
+
+  /** Stop any currently playing utterance and release the audio object URL. */
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setSpeaking(false);
+  }, []);
+
+  /** Synthesize ``text`` via the backend TTS endpoint and play it. */
+  const speakText = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content) return;
+
+      // Stop any current playback before starting a new utterance (cancellable).
+      stopSpeaking();
+
+      try {
+        const blob = await ttsApi.synthesize(content);
+        const url = URL.createObjectURL(blob);
+        objectUrlRef.current = url;
+
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        setLastSpoken(content);
+        setSpeaking(true);
+
+        audio.onended = () => {
+          stopSpeaking();
+        };
+        audio.onerror = () => {
+          stopSpeaking();
+        };
+
+        await audio.play();
+      } catch (err) {
+        stopSpeaking();
+        const message = err instanceof Error ? err.message : "Speech synthesis failed.";
+        appendError(message);
+      }
+    },
+    [stopSpeaking, appendError],
+  );
+
+  // On unmount, clean up any in-flight audio.
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Voice input (Phase 16B)
+  // ------------------------------------------------------------------
+
+  /** Send the final transcript through the existing chat submit flow. */
+  const submitVoiceTranscript = useCallback(
+    (transcript: string) => {
+      const content = transcript.trim();
+      if (!content || streaming) return;
+
+      const userMsg: ChatMessage = {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setDraft("");
+      setStreaming(true);
+      setStreamPhase("thinking");
+
+      let acc = "";
+
+      const handle = conversationApi.streamMessage(
+        { conversation_id: conversationId, message: content },
+        (event) => {
+          switch (event.event) {
+            case "status": {
+              const payload = event.data as { status: string };
+              setStreamPhase(payload.status === "generating" ? "generating" : "thinking");
+              break;
+            }
+            case "token": {
+              const payload = event.data as { token: string };
+              acc += payload.token;
+              setStreamPhase("generating");
+              break;
+            }
+            case "completed": {
+              const payload = event.data as StreamCompletedPayload;
+              acc = payload.content;
+              setMessages((prev) => [
+                ...prev,
+                toChatMessage(conversationId, payload.content, payload, new Date()),
+              ]);
+              void speakText(payload.content);
+              break;
+            }
+            case "error": {
+              const payload = event.data as { message: string };
+              appendError(payload.message);
+              break;
+            }
+            case "done": {
+              if (acc) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.content === acc)) return prev;
+                  return [
+                    ...prev,
+                    {
+                      id: `a-${conversationId}-${Date.now()}`,
+                      role: "assistant",
+                      content: acc,
+                      time: new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }),
+                    },
+                  ];
+                });
+              }
+              break;
+            }
+            default:
+              break;
+          }
+        },
+        (message) => {
+          appendError(message);
+        },
+        () => {
+          setStreaming(false);
+          setStreamPhase("idle");
+          abortRef.current = null;
+        },
+      );
+
+      abortRef.current = handle.abort;
+    },
+    [conversationId, streaming, appendError, speakText],
+  );
+
+  /** Tear down the active WS + media tracks + recorder. */
+  const teardownVoice = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // Ignore — recorder may already be inactive.
+      }
+    }
+    mediaRecorderRef.current = null;
+    if (wsRef.current) {
+      try {
+        wsRef.current.close();
+      } catch {
+        // Ignore
+      }
+    }
+    wsRef.current = null;
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) track.stop();
+    }
+    streamRef.current = null;
+  }, []);
+
+  /** Start microphone capture + the voice WS→STT session. */
+  const startVoice = useCallback(async () => {
+    if (streaming) {
+      appendError("Please wait for the current response to finish before using voice.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      appendError("Voice input is not supported in this browser.");
+      return;
+    }
+    const token = getAccessToken();
+    if (!token) {
+      appendError("You must be signed in to use voice input.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
+      streamRef.current = stream;
+
+      // Open the voice WebSocket (auth via ?token= for browser compatibility).
+      const ws = new WebSocket(
+        `${API_WS_BASE}/api/v1/voice/transcribe?token=${encodeURIComponent(token)}`,
+      );
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        let payload: {
+          type?: string;
+          text?: string;
+          detail?: string;
+          final?: boolean;
+        };
+        try {
+          payload = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+        if (payload.type === "transcript" && payload.text) {
+          setPartialTranscript(payload.text);
+          if (payload.final) {
+            finalTranscriptRef.current = payload.text;
+          }
+        } else if (payload.type === "error") {
+          // Surface voice failures instead of leaving the UI in "Listening…".
+          const detail = payload.detail || payload.text || "Voice transcription failed.";
+          teardownVoice();
+          setPartialTranscript("");
+          setVoiceState("idle");
+          appendError(detail);
+        }
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => resolve();
+        ws.onerror = () => reject(new Error("Could not connect to the voice service."));
+      });
+
+      // Send the config event so the utterance routes to the same conversation.
+      ws.send(JSON.stringify({ type: "config", conversation_id: conversationId }));
+
+      // Start recording PCM-ish audio chunks and stream them to the server.
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(e.data);
+        }
+      };
+      recorder.start(250);
+
+      setVoiceState("listening");
+      setPartialTranscript("");
+      finalTranscriptRef.current = null;
+    } catch (err) {
+      teardownVoice();
+      setVoiceState("idle");
+      const message = err instanceof Error ? err.message : "Could not access the microphone.";
+      appendError(message);
+    }
+  }, [conversationId, streaming, appendError, teardownVoice]);
+
+  /** Stop recording, signal end-of-speech, and route the transcript to chat. */
+  const stopVoice = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(e.data);
+        }
+      };
+      recorder.stop();
+    }
+
+    setVoiceState("transcribing");
+
+    // Signal end-of-speech so the server transcribes once.
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "end" }));
+    }
+
+    // Wait for the final transcript, then submit via the existing chat flow.
+    const poll = setInterval(() => {
+      const transcript = finalTranscriptRef.current;
+      if (transcript) {
+        clearInterval(poll);
+        setPartialTranscript("");
+        setVoiceState("thinking");
+        teardownVoice();
+        submitVoiceTranscript(transcript);
+        return;
+      }
+      if (!wsRef.current) {
+        // Socket closed without a final transcript — reset.
+        clearInterval(poll);
+        setPartialTranscript("");
+        setVoiceState("idle");
+      }
+    }, 150);
+
+    // Safety timeout — never leave the UI stuck transcribing.
+    setTimeout(() => {
+      clearInterval(poll);
+      const transcript = finalTranscriptRef.current;
+      if (transcript) {
+        setPartialTranscript("");
+        setVoiceState("thinking");
+        teardownVoice();
+        submitVoiceTranscript(transcript);
+      } else {
+        setPartialTranscript("");
+        setVoiceState("idle");
+        teardownVoice();
+      }
+    }, 15000);
+  }, [submitVoiceTranscript, teardownVoice]);
+
+  /** Toggle voice input on the mic button. */
+  const toggleVoice = useCallback(() => {
+    if (voiceState === "listening") {
+      void stopVoice();
+    } else {
+      void startVoice();
+    }
+  }, [voiceState, startVoice, stopVoice]);
+
+  // Auto-start the Phase 16B voice flow when the Voice Orb navigates here
+  // with `?voice=1`. Reuses the existing startVoice() — no new voice state.
+  useEffect(() => {
+    if (autoStartVoice) {
+      void startVoice();
+    }
+    // Only fire once on mount with the initial intent.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot intent.
+  }, []);
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => teardownVoice();
+  }, [teardownVoice]);
 
   async function submitPrompt(e: FormEvent) {
     e.preventDefault();
@@ -261,6 +644,7 @@ export function AiChat() {
               ...prev,
               toChatMessage(conversationId, payload.content, payload, new Date()),
             ]);
+            void speakText(payload.content);
             break;
           }
           case "error": {
@@ -383,22 +767,66 @@ export function AiChat() {
         onSubmit={submitPrompt}
         className="flex items-center gap-2 border-t border-white/[0.06] p-3"
       >
+        {speaking || lastSpoken ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (speaking) {
+                stopSpeaking();
+              } else if (lastSpoken) {
+                void speakText(lastSpoken);
+              }
+            }}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+              speaking
+                ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-300"
+                : "border-white/[0.08] bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"
+            }`}
+            aria-label={speaking ? "Stop speaking" : "Replay last response"}
+            title={speaking ? "Stop speaking" : "Replay last response"}
+          >
+            {speaking ? (
+              <StopIcon className="h-4 w-4" />
+            ) : (
+              <PlayIcon className="h-4.5 w-4.5" />
+            )}
+          </button>
+        ) : null}
         <button
           type="button"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-zinc-200"
-          aria-label="Voice input — coming soon"
-          title="Voice input — coming soon"
+          onClick={toggleVoice}
+          disabled={streaming}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+            voiceState === "listening"
+              ? "border-red-400/40 bg-red-500/20 text-red-300"
+              : "border-white/[0.08] bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"
+          } disabled:cursor-not-allowed disabled:opacity-40`}
+          aria-label={voiceState === "listening" ? "Stop voice input" : "Speak to the AI"}
+          title={voiceState === "listening" ? "Stop recording" : "Speak to the AI"}
         >
           <MicIcon className="h-4.5 w-4.5" />
         </button>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={`Ask ${selectedAgent}…`}
-          disabled={streaming}
-          className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none transition-colors focus:border-cyan-400/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
-        />
+        {voiceState !== "idle" ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
+            <span className="truncate text-[12px] text-zinc-300">
+              {VOICE_LABELS[voiceState] || "Voice"}
+            </span>
+            {partialTranscript ? (
+              <span className="truncate font-mono text-[11px] text-cyan-300">
+                “{partialTranscript}”
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={`Ask ${selectedAgent}…`}
+            disabled={streaming}
+            className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none transition-colors focus:border-cyan-400/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
+          />
+        )}
         {streaming ? (
           <button
             type="button"

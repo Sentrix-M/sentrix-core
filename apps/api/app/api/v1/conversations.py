@@ -11,14 +11,16 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
     get_conversation_service,
     get_current_user,
+    get_memory_service,
     get_tool_executor,
 )
+from app.memory.service import MemoryService
 from app.models.user import User
 from app.schemas.conversation import (
     ConversationMessageRequest,
@@ -62,6 +64,8 @@ async def stream_message(
     payload: ConversationMessageRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     tool_executor: Annotated[ToolExecutor, Depends(get_tool_executor)],
+    memory_service: Annotated[MemoryService, Depends(get_memory_service)],
+    request: Request,
 ) -> StreamingResponse:
     """Stream the assistant reply as Server-Sent Events.
 
@@ -74,8 +78,17 @@ async def stream_message(
     messages that express a tool intent (e.g. "list uploaded documents",
     "run python", "execute terminal command") trigger the corresponding mock
     tool and its output is fed into the prompt for a natural explanation.
+
+    The manager is also wired with the shared :class:`MemoryService` (for
+    long-term context) and the shared :class:`ReportService` (for streamed
+    report generation) when available on application state.
     """
-    manager = StreamingManager(tool_executor=tool_executor)
+    report_service = getattr(request.app.state, "report_service", None)
+    manager = StreamingManager(
+        tool_executor=tool_executor,
+        memory_service=memory_service,
+        report_service=report_service,
+    )
     # Diagnostic: surface the provider instance wired into this stream's
     # kernel pipeline so operators can confirm Gemini (or the mock fallback)
     # is actually being used per request.

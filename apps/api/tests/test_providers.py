@@ -430,6 +430,38 @@ class TestGeminiProvider:
         parts = cast(list[dict[str, object]], contents[0]["parts"])
         assert "Analyze the log file" in cast(str, parts[0]["text"])
 
+    def test_generate_injects_tool_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gemini must receive successful ToolResults so it answers from live data."""
+        _patch_settings(monkeypatch)
+        fake = _FakeGeminiClient(response_text="VirusTotal flags this as malicious.")
+        provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)
+        context = ConversationContext(
+            conversation_id="conv-test",
+            user_message=ContextMessage(role="user", content="Check VirusTotal for 8.8.8.8"),
+            prior_messages=(),
+        )
+        prompt = DefaultPromptBuilder().build(
+            context=context,
+            system="You are a SOC analyst.",
+            instruction="",
+            tool_results=(
+                {
+                    "tool": "virustotal",
+                    "success": True,
+                    "output": {"malicious": 15, "query": "8.8.8.8"},
+                    "error": None,
+                },
+            ),
+        )
+        provider.generate(prompt)
+        assert fake.models.generated_calls
+        _model, contents, _config = fake.models.generated_calls[0]
+        user_text = cast(str, contents[0]["parts"][0]["text"]) if contents else ""
+        assert "Tool results:" in user_text
+        assert "virustotal" in user_text
+        assert "succeeded" in user_text
+        assert "8.8.8.8" in user_text
+
     def test_generate_raises_on_empty_response(self) -> None:
         fake = _FakeGeminiClient(response_text="")
         provider = GeminiProvider(api_key="test-key", client_factory=lambda: fake)

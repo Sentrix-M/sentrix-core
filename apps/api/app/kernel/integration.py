@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from app.memory.manager import MemoryManager
     from app.memory.service import MemoryService
     from app.rag.retriever import SemanticRetriever
+    from app.reports.service import ReportService
     from app.tools.executor import ToolExecutor
 
 #: System prompt used by the default Sentrix pipeline.
@@ -58,6 +59,7 @@ def build_kernel_pipeline(
     rag_top_k: int = DEFAULT_TOP_K,
     tool_executor: ToolExecutor | None = None,
     memory_service: MemoryService | None = None,
+    report_service: ReportService | None = None,
 ) -> KernelPipeline:
     """Compose a :class:`KernelPipeline` wired with a provider from ``factory``.
 
@@ -86,6 +88,9 @@ def build_kernel_pipeline(
         prompt so the provider can explain them naturally.
     :param memory_service: Optional :class:`MemoryService` used to inject
         recent conversation context into the prompt on a best-effort basis.
+    :param report_service: Optional :class:`ReportService` passed through to
+        the :class:`ToolCoordinator` so chat-driven workflows can generate
+        and persist incident reports (best-effort).
     """
     provider_factory = factory or ProviderFactory()
     provider_name = provider or provider_factory._resolve_default()
@@ -133,6 +138,7 @@ def build_kernel_pipeline(
         tool_coordinator = ToolCoordinator(
             tool_executor,
             memory_service=memory_service,
+            report_service=report_service,
         )
 
     return KernelPipeline(

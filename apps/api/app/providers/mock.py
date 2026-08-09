@@ -28,7 +28,9 @@ class MockProvider(BaseProvider):  # type: ignore[misc]
         return ProviderOutput(
             text=text,
             model=self.model,
-            reasoning=("Matched the user message against the mock cybersecurity keyword rules.",),
+            reasoning=(
+                "Synthesized the response from the mock provider prompt context.",
+            ),
             metadata={"provider": "mock", "mode": "offline"},
         )
 
@@ -44,8 +46,57 @@ class MockProvider(BaseProvider):  # type: ignore[misc]
         """Mock providers are always healthy (they need no network)."""
         return ProviderHealth(ok=True, message="Mock provider is available.")
 
+    @staticmethod
+    def _surface_tool_results(prompt: Prompt) -> str | None:
+        """Return a prose reply reflecting ``prompt.tool_results``, if any.
+
+        Surfaces each successful tool's output (and reasons for failures) so
+        real VirusTotal/Shodan/Wazuh/Nmap findings reach the final response.
+        Returns ``None`` when no tool results are present so the legacy
+        keyword-aware branches still apply.
+        """
+        results = prompt.tool_results
+        if not results:
+            return None
+
+        lines: list[str] = [
+            "I ran the requested security checks and here are the live tool findings."
+        ]
+        succeeded = 0
+        for i, result in enumerate(results, 1):
+            tool = result.get("tool", "unknown")
+            success = bool(result.get("success", False))
+            output = result.get("output")
+            error = result.get("error")
+            if success:
+                succeeded += 1
+                lines.append(f"[{i}] {tool}: {output}")
+            else:
+                lines.append(f"[{i}] {tool} failed: {error or 'unknown error'}")
+
+        if succeeded:
+            lines.append(
+                "These results are from the live tool integration. Use them to "
+                "inform your containment and remediation decisions."
+            )
+        else:
+            lines.append(
+                "None of the tool checks completed successfully. I recommend "
+                "reviewing the errors above and retrying."
+            )
+        return "\n".join(lines)
+
     def _build_response(self, prompt: Prompt) -> str:
-        """Build a keyword-aware mock reply from the current user message."""
+        """Build a keyword-aware mock reply from the current user message.
+
+        When the prompt carries tool results (from the kernel pipeline), those
+        findings are surfaced first so the response reflects real tool output.
+        Otherwise it falls back to the deterministic keyword-aware branches.
+        """
+        surfaced = self._surface_tool_results(prompt)
+        if surfaced is not None:
+            return surfaced
+
         text = prompt.to_text()
         lower = text.lower()
         if any(word in lower for word in ("beacon", "c2", "alert", "critical")):

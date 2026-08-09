@@ -111,6 +111,21 @@ class Settings(BaseSettings):
     admin_full_name: str = "Sentrix Admin"
     admin_org_id: str = "00000000-0000-0000-0000-000000000000"
 
+    # Authentication backend (Phase 17 — persistent authentication)
+    # `AUTH_BACKEND` selects the storage backend for users and refresh tokens.
+    # Supported values:
+    #   - "memory" (default) — in-memory repositories (offline-safe, no disk).
+    #   - "postgres" — persistent PostgreSQL repositories (built for Neon).
+    # The default remains "memory" so existing development and the test suite
+    # are unchanged; switch to "postgres" to enable persistence across restarts.
+    auth_backend: Literal["memory", "postgres"] = "memory"
+
+    # `DATABASE_URL` is the PostgreSQL connection string used when
+    # `AUTH_BACKEND="postgres"`. It must be a valid `psycopg` async DSN
+    # (e.g. a Neon PostgreSQL connection string). When empty while postgres
+    # is selected, the repositories fail fast with a clear configuration error.
+    database_url: str = Field(default="", repr=False)
+
     # Long-Term Memory backend
     # `MEMORY_BACKEND` selects the storage backend for the Long-Term Memory
     # layer. Supported values:
@@ -122,6 +137,29 @@ class Settings(BaseSettings):
     # `MEMORY_DB_PATH` is the SQLite file used when `memory_backend="sqlite"`.
     # Relative paths resolve from the API package root (`apps/api`).
     memory_db_path: str = "data/sentrix_memory.db"
+
+    # Speech-to-Text (Phase 16A)
+    # `STT_PROVIDER` selects the speech-to-text backend for the voice
+    # assistant. Supported values:
+    #   - "mock" (default) — deterministic offline STT, no heavy model.
+    #   - "faster_whisper" — local Faster-Whisper model (optional, enabled
+    #     only via this setting; never forced on developer machines).
+    # A future "openai_realtime" value can be added without changing APIs.
+    stt_provider: str = "mock"
+
+    # Faster-Whisper configuration. Only used when `STT_PROVIDER="faster_whisper"`.
+    # `WHISPER_MODEL` names the model (e.g. "base", "small", "medium").
+    # `WHISPER_DEVICE` selects the compute device ("cpu" default, or "cuda").
+    # `WHISPER_COMPUTE_TYPE` controls precision ("int8" default).
+    whisper_model: str = "base"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
+
+    # Text-to-Speech (Phase 16C — config added now for forward compatibility).
+    # `TTS_PROVIDER` selects the TTS backend. Supported values:
+    #   - "mock" (default) — deterministic offline TTS, no heavy model.
+    #   - "kokoro" — local Kokoro TTS (added in Phase 16C).
+    tts_provider: str = "mock"
 
 
 @lru_cache

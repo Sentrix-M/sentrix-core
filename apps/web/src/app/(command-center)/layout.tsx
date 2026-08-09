@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { VoiceIcon } from "@/components/command-center/icons";
 import { Sidebar } from "@/components/command-center/sidebar";
@@ -17,7 +17,6 @@ export default function CommandCenterLayout({ children }: { children: React.Reac
   const { status, isAuthenticated } = useAuth();
   const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [voiceToast, setVoiceToast] = useState(false);
 
   // Route guard: unauthenticated users are redirected to /login.
   useEffect(() => {
@@ -89,29 +88,22 @@ export default function CommandCenterLayout({ children }: { children: React.Reac
         </main>
       </div>
 
-      {/* Floating Voice Orb */}
+{/* Floating Voice Orb — opens the AI Copilot voice experience.
+          Navigates to /chat?voice=1 so the mounted AiChat auto-starts the
+          existing Phase 16B voice flow (mic → WS/STT → submit → TTS). */}
       <button
         type="button"
-        onClick={() => {
-          setVoiceToast(true);
-          window.setTimeout(() => setVoiceToast(false), 3000);
-        }}
+        onClick={() => router.push("/chat?voice=1")}
         className="group fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-indigo-600 text-zinc-950 shadow-2xl shadow-cyan-500/30 ring-1 ring-white/40 transition-transform hover:scale-105"
-        aria-label="Voice orb — coming soon"
+        aria-label="Open voice assistant"
+        title="Speak to the AI Copilot"
       >
         <span className="animate-pulse-ring absolute inset-0 rounded-full bg-cyan-400/40" />
         <VoiceIcon className="h-6 w-6 animate-flutter" />
         <span className="pointer-events-none absolute right-full mr-3 flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-zinc-200 opacity-0 ring-1 ring-inset ring-white/20 backdrop-blur transition-opacity duration-200 group-hover:opacity-100">
-          <span className="text-cyan-300">●</span> Voice coming soon
+          <span className="text-cyan-300">●</span> Voice assistant
         </span>
       </button>
-
-      {voiceToast ? (
-        <div className="fixed bottom-24 right-6 z-50 rounded-xl border border-white/10 bg-zinc-900/90 px-4 py-2.5 text-[12px] text-zinc-200 shadow-2xl backdrop-blur">
-          <span className="text-cyan-300">Voice</span> is coming soon — the command center is in UI
-          preview mode.
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -30,6 +30,7 @@ from app.tools.executor import ToolExecutor
 
 if TYPE_CHECKING:
     from app.memory.service import MemoryService
+    from app.reports.service import ReportService
 
 #: Default inter-token delay (seconds) used to simulate a live provider stream.
 DEFAULT_TOKEN_DELAY_SECONDS = 0.015
@@ -55,6 +56,7 @@ class StreamingManager:
         token_delay_seconds: float = DEFAULT_TOKEN_DELAY_SECONDS,
         tool_executor: ToolExecutor | None = None,
         memory_service: MemoryService | None = None,
+        report_service: ReportService | None = None,
     ) -> None:
         """Create the manager.
 
@@ -67,12 +69,22 @@ class StreamingManager:
             and surface ``tools_used`` in the ``completed`` event.
         :param memory_service: Optional :class:`MemoryService` passed through
             to the kernel pipeline for long-term memory context (best-effort).
+        :param report_service: Optional :class:`ReportService` passed through
+            to the kernel pipeline so streamed workflows can generate and
+            persist incident reports (best-effort).
         """
         self._pipeline = pipeline or build_kernel_pipeline(
             tool_executor=tool_executor,
             memory_service=memory_service,
+            report_service=report_service,
         )
+        self._report_service = report_service
         self._token_delay_seconds = token_delay_seconds
+
+    @property
+    def report_service(self) -> ReportService | None:
+        """The optional report service ("None" when not wired)."""
+        return self._report_service
 
     async def stream(
         self,

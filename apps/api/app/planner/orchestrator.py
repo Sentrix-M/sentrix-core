@@ -147,17 +147,18 @@ class WorkflowOrchestrator:
     ) -> dict[str, Any]:
         """Assemble an incident report from the collected results.
 
-        Instead of re-running tools, the collected results are passed
-        directly to the engine through the service's lower-level path so no
-        duplicate work is performed. The service exposes ``generate`` for
-        tool inputs; here we call the engine directly via the service's
-        ``engine`` property to reuse MITRE + RAG + provider summary.
+        The collected results are passed to the public
+        :meth:`~app.reports.service.ReportService.generate` API, which reuses
+        :class:`~app.reports.engine.ReportEngine` for MITRE + RAG + provider
+        summary and records the generated report to long-term memory when a
+        :class:`~app.memory.service.MemoryService` is wired. Passing
+        ``tool_results`` avoids re-running any tools.
         """
         assert self._report_service is not None  # guard for mypy/logic
         incident_title = plan.incident_title or "Security Incident"
 
         try:
-            report: IncidentReport = self._report_service.engine.generate(
+            report: IncidentReport = await self._report_service.generate(
                 incident_title=incident_title,
                 tool_results=results,
             )

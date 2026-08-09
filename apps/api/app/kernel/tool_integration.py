@@ -31,6 +31,7 @@ from app.tools.executor import ToolExecutor
 
 if TYPE_CHECKING:
     from app.memory.service import MemoryService
+    from app.reports.service import ReportService
 
 #: Default values used when a user message implies a tool but does not
 #: contain a concrete command/code/path to extract.
@@ -265,6 +266,9 @@ class ToolCoordinator:
     :param memory_service: Optional :class:`MemoryService` passed through to
         the :class:`WorkflowOrchestrator` so multi-tool executions and
         investigations are recorded to long-term memory (best-effort).
+    :param report_service: Optional :class:`ReportService` passed through to
+        the :class:`WorkflowOrchestrator` so chat-driven investigations can
+        generate and persist incident reports (best-effort).
     """
 
     #: Message patterns that trigger the filesystem *list* intent.
@@ -378,10 +382,12 @@ class ToolCoordinator:
         executor: ToolExecutor,
         mitre_mapper: MitreMapper | None = None,
         memory_service: MemoryService | None = None,
+        report_service: ReportService | None = None,
     ) -> None:
         self._executor = executor
         self._mitre_mapper = mitre_mapper
         self._memory_service = memory_service
+        self._report_service = report_service
 
     @property
     def executor(self) -> ToolExecutor:
@@ -399,6 +405,11 @@ class ToolCoordinator:
     def memory_service(self) -> MemoryService | None:
         """The optional memory service ("None" when not wired)."""
         return self._memory_service
+
+    @property
+    def report_service(self) -> ReportService | None:
+        """The optional report service ("None" when not wired)."""
+        return self._report_service
 
     # ------------------------------------------------------------------
     # Detection
@@ -591,6 +602,7 @@ class ToolCoordinator:
             executor=self._executor,
             mitre_mapper=self.mitre_mapper,
             memory_service=self._memory_service,
+            report_service=self._report_service,
         )
         return _run_async_from_sync(
             lambda: orchestrator.run(

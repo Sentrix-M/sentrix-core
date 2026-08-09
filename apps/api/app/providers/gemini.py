@@ -103,6 +103,38 @@ def _build_content_parts(prompt: Prompt) -> list[dict[str, object]]:
         else:
             entries.append({"role": "user", "parts": [{"text": text}]})
 
+    # Inject live tool results (e.g. VirusTotal/Shodan findings) into the
+    # final user message so the provider can base its answer on the actual
+    # tool output rather than generic knowledge. Mirrors Prompt.to_text().
+    if prompt.tool_results:
+        tool_lines = ["Tool results:"]
+        for i, result in enumerate(prompt.tool_results, 1):
+            tool_name = result.get("tool", "unknown")
+            success = bool(result.get("success", False))
+            status = "succeeded" if success else "failed"
+            tool_lines.append(f"[{i}] {tool_name} {status}")
+            if success:
+                output = result.get("output")
+                if output is not None:
+                    tool_lines.append(f"Output: {output}")
+            error = result.get("error")
+            if error:
+                tool_lines.append(f"Error: {error}")
+        tool_lines.append(
+            "Use the tool results above to answer the user's request naturally "
+            "and accurately. When a tool failed, explain what happened and "
+            "suggest a next step."
+        )
+        tool_text = "\n".join(tool_lines)
+        if last_user_index >= 0:
+            parts = entries[last_user_index]["parts"]
+            assert isinstance(parts, list) and parts
+            first = parts[0]
+            assert isinstance(first, dict)
+            first["text"] = f"{first['text']}\n\n{tool_text}"
+        else:
+            entries.append({"role": "user", "parts": [{"text": tool_text}]})
+
     return entries
 
 

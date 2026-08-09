@@ -17,6 +17,7 @@ from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.config.settings import get_settings
 from app.db.db import MemoryDatabase
+from app.db.postgres import build_connection_pool
 from app.kernel.integration import build_kernel_pipeline
 from app.memory.repository import SQLiteMemoryRepository
 from app.memory.service import MemoryService
@@ -24,8 +25,14 @@ from app.providers.factory import ProviderFactory
 from app.rag.repository import InMemoryDocumentRepository
 from app.rag.service import RagService
 from app.reports.service import ReportService
-from app.repositories.refresh_token_repository import InMemoryRefreshTokenRepository
-from app.repositories.user_repository import InMemoryUserRepository
+from app.repositories.refresh_token_repository import (
+    InMemoryRefreshTokenRepository,
+    PostgreSQLRefreshTokenRepository,
+)
+from app.repositories.user_repository import (
+    InMemoryUserRepository,
+    PostgreSQLUserRepository,
+)
 from app.services.conversation_service import ConversationService
 from app.tools.executor import ToolExecutor
 from app.tools.mock_tools import (
@@ -74,15 +81,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning("ProviderFactory failed to create provider: %s", exc)
     # ------------------------------------------------------------------
 
-    # Development store. Swap for PostgreSQLUserRepository when the DB layer
-    # is implemented.
-    user_repository = InMemoryUserRepository()
-    refresh_token_repository = InMemoryRefreshTokenRepository()
+    # Authentication persistence — selectable backend.
+    #   AUTH_BACKEND=memory   (default) uses the in-memory repositories.
+    #   AUTH_BACKEND=postgres uses the persistent PostgreSQL repositories
+    #   backed by a connection pool (tables are created idempotently).
+    # The chosen repositories are stored on app.state and consumed by the
+    # dependency-injection layer, so the service layer is unaware of the swap.
+    auth_pool = None
+    if settings.auth_backend == "postgres":
+        auth_pool = build_connection_pool(settings.database_url)
+        await auth_pool.open()
+        await auth_pool.initialize()
+        user_repository = PostgreSQLUserRepository(pool=auth_pool)
+        refresh_token_repository = PostgreSQLRefreshTokenRepository(pool=auth_pool)
+        logger.info("AUTH_BACKEND=postgres — using persistent repositories.")
+    else:
+        user_repository = InMemoryUserRepository()
+        refresh_token_repository = InMemoryRefreshTokenRepository()
 
     app.state.user_repository = user_repository
     app.state.refresh_token_repository = refresh_token_repository
 
-# Long-Term Memory — SQLite when configured, otherwise in-memory.
+    # Long-Term Memory — SQLite when configured, otherwise in-memory.
     if settings.memory_backend == "sqlite":
         memory_db = MemoryDatabase(path=settings.memory_db_path)
     else:
@@ -90,7 +110,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_repository = SQLiteMemoryRepository(db=memory_db)
     app.state.memory_service = MemoryService(repository=memory_repository)
 
-# RAG document ingestion engine — in-memory for development.
+    # RAG document ingestion engine — in-memory for development.
     document_repository = InMemoryDocumentRepository()
     app.state.rag_service = RagService(repository=document_repository)
 
@@ -107,20 +127,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_executor = ToolExecutor(registry=tool_registry)
     app.state.tool_executor = tool_executor
 
-    # Conversation engine — kernel-backed so tool results and provider output
-    # reach the client. When the pipeline is unavailable, the service falls
-    # back to a deterministic mock reply (backward compatible).
-    app.state.conversation_service = ConversationService(
-        memory_service=app.state.memory_service,
-        pipeline=build_kernel_pipeline(
-            tool_executor=tool_executor,
-            memory_service=app.state.memory_service,
-        ),
-    )
-
-# Incident Report Generator — combines tool results, MITRE, RAG, and the
+    # Incident Report Generator — combines tool results, MITRE, RAG, and the
     # AI provider into a downloadable report (markdown/json/pdf). Long-term
     # memory records every report and honours the user's format preference.
+    # Built before the kernel pipeline so report_service can be wired into
+    # the conversation engine for chat-driven report generation.
     report_service = ReportService(
         executor=tool_executor,
         provider=factory.create(),
@@ -132,14 +143,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ReportGeneratorTool(service=report_service, format_name="markdown")
     )
 
-    # Seed the default admin account for local development.
+    # Conversation engine — kernel-backed so tool results and provider output
+    # reach the client. When the pipeline is unavailable, the service falls
+    # back to a deterministic mock reply (backward compatible).
+    app.state.conversation_service = ConversationService(
+        memory_service=app.state.memory_service,
+        pipeline=build_kernel_pipeline(
+            tool_executor=tool_executor,
+            memory_service=app.state.memory_service,
+            report_service=report_service,
+        ),
+    )
+
+# Seed the default admin account for local development.
     await seed_admin_user(user_repository, settings)
 
     try:
         yield
     finally:
-        # Future: close DB connections here.
-        pass
+        # Close the PostgreSQL connection pool when it was opened.
+        if auth_pool is not None:
+            await auth_pool.close()
 
 
 app = FastAPI(
