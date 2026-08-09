@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production"] = "development"
 
     # CORS — comma-separated list of allowed origins.
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: list[str] = Field(
+    default_factory=lambda: [
+        "http://localhost:3000",
+        "https://sentrix-web-gmnu.onrender.com",
+    ]
+)
 
     # JWT configuration
     # NOTE: the dev default is insecure by design; production must set a
